@@ -5,7 +5,7 @@ import numpy as np
 
 from pyRTC.hardware.AndorWFS import AndorWFS
 
-FILE = open("/home/felix/src/pyrtc/IRTF/test.txt", "a")
+FILE = open("/home/felix/src/pyrtc/IRTF/output.txt", "a")
 
 def test_exposure(wfs):
     wfs.expose()

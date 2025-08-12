@@ -72,7 +72,6 @@ class AndorWFS(WavefrontSensor):
 
         # Update number of pixels
         self.size = self.roiWidth * self.roiHeight
-        print("The size of the image is now: ", self.size)
         return
     
     @pause_acquisition
