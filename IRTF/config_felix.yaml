@@ -29,15 +29,15 @@ wfs:
   name: Andor
   binning: 1
   downsampleFactor: 1
-  exposure: 0.5
+  exposure: 1
   gain: 0
   bitDepth: 16
   left: 189
   top: 319 
-  width: 128 
-  height: 128 
-  darkCount: 2000
-  darkFile: "/home/ellenlee/pyRTC/IRTF/calib/darkFELIX.npy"
+  width: 64 
+  height: 64 
+  darkCount: 5
+  #darkFile: "/home/ellenlee/pyRTC/IRTF/calib/darkFELIX.npy"
   affinity: 0
   # gpuDevice: 0
   functions:

@@ -1,38 +1,36 @@
+import time
 import matplotlib.pyplot as plt
 import pyRTC.utils as utils
+import numpy as np
 
 from pyRTC.hardware.AndorWFS import AndorWFS
 
-def test_set_roi(wfs, roi):
-    wfs.setRoi(roi)
-
-def test_set_texpos(wfs, texpos):
-    wfs.setExposure(texpos)
-
-def test_binning(wfs, binning):
-    wfs.setBinning(binning)
-
-def test_gain(wfs, gain):
-    wfs.setGain(gain)
-
-def set_bit_depth(wfs, bit_depth):
-    wfs.setBitDepth(bit_depth)
+FILE = open("/home/felix/src/pyrtc/IRTF/test.txt", "a")
 
 def test_exposure(wfs):
     wfs.expose()
-    img = wfs.data()
+    img = wfs.data
     plt.figure()
     plt.imshow(img, cmap='gray')
     plt.show()
 
 if __name__ == "__main__":
-    conf = utils.read_yaml_file("test_config.yaml")
-    wfs_conf = conf["wfs"]
-    wfs = AndorWFS(wfs_conf)
+    try:
+        conf = utils.read_yaml_file("config_felix.yaml")
+        wfs_conf = conf["wfs"]
+        wfs = AndorWFS(wfs_conf)
 
-    test_set_roi(wfs, (100, 100, 128, 128))
-    test_set_texpos(wfs, 0.5)
-    test_binning(wfs, 1)
-    test_gain(wfs, 0)
-    set_bit_depth(wfs, 16)
-    test_exposure(wfs)
+        k = 0
+        while wfs.total_frames < 10:
+            #FILE.write(f"{k}\n")
+            wfs.expose()
+            FILE.write(f"{wfs.total_frames}\n")
+            #time.sleep(0.1)
+            k += 1
+
+        #wfs.setRoi((64, 64, 189, 319))  # Example ROI
+        #test_exposure(wfs)
+
+    finally:
+        FILE.write("aborting\n")
+        del(wfs)
