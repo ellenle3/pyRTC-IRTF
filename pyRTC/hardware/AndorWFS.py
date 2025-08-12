@@ -25,44 +25,42 @@ class AndorWFS(WavefrontSensor):
 
         # Following documentation and example Image.py in Andor Linux SDK v2.104.30088.0
         self.sdk = atmcd()
-        self.codes = atmcd_codes()
-        self.errors = atmcd_codes.Error_Codes
+        self.codes = atmcd_codes
+        self.errors = atmcd_errors.Error_Codes
 
-        ret = self.sdk.Initialize("/usr/local/etc/andor")  # Initialize camera
-        if ret != self.errors.AT_SUCCESS:
-            raise RuntimeError(f"Failed to initialize Andor SDK: {self.sdk.GetErrorMessage(ret)}")
-
+        self.sdk.Initialize("/usr/local/etc/andor")  # Initialize camera
         self.sdk.SetReadMode(self.codes.Read_Mode.IMAGE)
         self.sdk.SetAcquisitionMode(self.codes.Acquisition_Mode.RUN_TILL_ABORT)
 
         # Begin running continuously. Kinetic cycle time to minimum possible amount (>0)
         self.sdk.SetKineticCycleTime(0)
-        ret = self.sdk.StartAcquisition()
+        self.sdk.StartAcquisition()
         
         self.downsampledImage = None
         if "bitDepth" in conf:
             self.setBitDepth(conf["bitDepth"])
+        # ROI needs to be set before binning
+        if "top" in conf and "left" in conf and "width" in conf and "height" in conf:
+            roi=[conf["width"],conf["height"],conf["left"],conf["top"]]
+            self.setRoi(roi)
         if "binning" in conf:
             self.setBinning(conf["binning"])
         if "exposure" in conf:
             self.setExposure(conf["exposure"])
-        if "top" in conf and "left" in conf and "width" in conf and "height" in conf:
-            roi=[conf["width"],conf["height"],conf["left"],conf["top"]]
-            self.setRoi(roi)
         if "gain" in conf:
             self.setGain(conf["gain"])
+
+        self.total_frames = 0
 
         return
 
     @pause_acquisition
     def setRoi(self, roi):
         super().setRoi(roi)
-
-        self.roiWidth = roi[0]
-        self.roiHeight = roi[1]
-        self.roiLeft = roi[2]
-        self.roiTop = roi[3]
-
+ 
+        if not hasattr(self, "binning"):
+            super().setBinning(1)
+        
         self.sdk.SetImage(
             hbin   = self.binning,
             vbin   = self.binning,
@@ -71,6 +69,10 @@ class AndorWFS(WavefrontSensor):
             vstart = self.roiTop,
             vend   = self.roiTop + self.roiHeight - 1
         )
+
+        # Update number of pixels
+        self.size = self.roiWidth * self.roiHeight
+        print("The size of the image is now: ", self.size)
         return
     
     @pause_acquisition
@@ -97,8 +99,8 @@ class AndorWFS(WavefrontSensor):
     @pause_acquisition
     def setGain(self, gain):
         super().setGain(gain)
-        if self.sdk.IsPreAmpGainAvailable():
-            self.sdk.SetPreAmpGain(self.gain)
+        #if self.sdk.IsPreAmpGainAvailable():
+        #    self.sdk.SetPreAmpGain(self.gain)
         return
     
     @pause_acquisition
@@ -111,11 +113,14 @@ class AndorWFS(WavefrontSensor):
     def expose(self):
         
         # Wait until new image is available
-        ret = self.sdk.GetNumberNewImages()
-        while ret == self.errors.DRV_NO_NEW_DATA:
-            ret = self.sdk.GetNumberNewImages()
+        ret, n = self.sdk.GetTotalNumberImagesAcquired()
+        while (n == self.total_frames or ret != self.errors.DRV_SUCCESS):
+            ret, n = self.sdk.GetTotalNumberImagesAcquired()
+        self.total_frames = n
 
-        junk, self.data = self.sdk.GetMostRecentImage16()
+        junk, img = self.sdk.GetMostRecentImage16(self.size)
+        img = np.reshape(img, (self.roiHeight, self.roiWidth))
+        self.data = img.astype(np.uint16)
         super().expose()
         return
 
@@ -123,7 +128,8 @@ class AndorWFS(WavefrontSensor):
         super().__del__()
         time.sleep(1e-1)
         self.sdk.AbortAcquisition()
-        # Do not shut down the camera as it is also used for target acquisition
+        self.sdk.SetAcquisitionMode(self.codes.Acquisition_Mode.SINGLE_SCAN)
+        self.sdk.ShutDown()  # clean up
         return
     
 if __name__ == "__main__":
