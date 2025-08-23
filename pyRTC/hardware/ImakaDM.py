@@ -20,8 +20,9 @@ class ImakaDM(WavefrontCorrector):
     @staticmethod
     def generate_layout_irtf1():
         """Creates the layout of IRTF-ASM-1."""
-        xx, yy = np.meshgrid(np.arange(11), np.arange(11))
-        layout = np.sqrt((xx - 5)**2 + (yy-5)**2) < 5.5
+        #xx, yy = np.meshgrid(np.arange(7), np.arange(7))
+        #layout = np.sqrt((xx - 3)**2 + (yy-3)**2) < 3.2
+        layout = np.full((6, 6), True, dtype=bool) # placeholder
         return layout
 
     def __init__(self, conf) -> None:
@@ -71,10 +72,11 @@ class ImakaDM(WavefrontCorrector):
         params = " ".join(cmdstr[1:])
         nparams = n-1
         sndcmd = "imakapycsclientv20250716 " + cmd + " " + str(nparams) + " " + params
-        print(">pycsclient: Sending: %s" % sndcmd)
+        #print(">pycsclient: Sending: %s" % sndcmd)
         self.socket.send_string(sndcmd)
         message = self.socket.recv()
-        print(">pycsclient: Received reply [ %s ]" % (message[:2]))
+        #print(">pycsclient: Received reply [ %s ]" % (message[:2]))
+        return message.decode('utf-8').replace("\x00", "")
     
     def sendToHardware(self):
         #Do all of the normal updating of the super class
@@ -83,20 +85,19 @@ class ImakaDM(WavefrontCorrector):
         self.currentShape = np.clip(self.currentShape, -self.CAP, self.CAP)
         #Send the correction to the actual mirror
 
-        # If the number of commands is less than the number of channels, pad
-        # with zeros
+        # Pad command to match number of channels
         c = self.currentShape
-        if len(c) != self.numChannels:
-            c_chan = np.zeros(self.numChannels)
-            c_chan[:len(c)] = self.currentShape
-        else:
-            c_chan = np.array(c)
+        c_chan = np.zeros(self.numChannels)
+        c_chan[:len(c)] = self.currentShape
 
         # Generate the command string
-        cmd_str = "csclient set.act.volts "
+        cmd_str = "set.act.volts "
         for num in c_chan:
-            cmd_str += '{:.6f}'.format(num) + ' '
-        self.csclient(cmd_str)
+            cmd_str += '{:.5f}'.format(num) + ' '
+        cmd_str = cmd_str.strip()
+        message = self.csclient(cmd_str)
+        self.testval = message
+        self.num_values = len(c_chan)
         return
 
     def __del__(self):
