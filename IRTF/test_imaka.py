@@ -5,7 +5,8 @@ import numpy as np
 
 from pyRTC.hardware.ImakaDM import ImakaDM
 
-FILE = open("/home/felix/src/pyrtc/IRTF/output.txt", "a")
+#FILE = open("/home/felix/src/pyrtc/IRTF/output.txt", "a")
+FILE = open("/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/output.txt", "a")
 
 if __name__ == "__main__":
     try:
@@ -13,8 +14,17 @@ if __name__ == "__main__":
         dm_conf = conf["wfc"]
         dm = ImakaDM(dm_conf)
 
-        dm.csclient("imaka set.nave 3000")
+        testcmd = np.zeros(dm.numActuators, dtype=np.float32)
+        start = time.time()
+        n = 100
+        for i in range(n):
+            dm.write(testcmd)
+            dm.sendToHardware()
+            FILE.write(dm.testval + "\n")
+        end = time.time()
+        FILE.write(f"Time for {n} commands: %f\n" % (end - start))
+        FILE.write(f"Loop rate: %f Hz\n" % (n / (end - start)))
 
     finally:
-        FILE.write("aborting\n")
+        #FILE.write("aborting\n")
         del(dm)
