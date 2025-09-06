@@ -20,7 +20,7 @@ wfs:
   - expose
 
 slopes:
-  type: PYWFS
+  type: SHWFS
   signalType: slopes
   affinity: 4
   flatNorm: True

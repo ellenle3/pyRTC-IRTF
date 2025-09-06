@@ -1,13 +1,18 @@
 from pyRTC.WavefrontSensor import *
-from pyAndorSDK2 import atmcd, atmcd_codes, atmcd_errors
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 
 from time import sleep
-from functools import wraps
 
 
-class AndorWFSSim(WavefrontSensor):
+def gaussian2d(x, y, c0, s, a):
+    """
+    c0: tuple
+        (x, y) coordinates of center
+    """
+    return a * np.exp( -((x-c0[0])**2 + (y-c0[1])**2) / (2*s*s) )
+
+class FELIXSimulator(WavefrontSensor):
     """Simulates FELIX WFS data.
     """
 
@@ -27,19 +32,46 @@ class AndorWFSSim(WavefrontSensor):
         if "gain" in conf:
             self.setGain(conf["gain"])
 
+        self.amplitude = conf["amplitude"]
+        self.cal_pt1 = conf["cal_pt1"]
+        self.cal_pt2 = conf["cal_pt2"]
+        self.cal_pt3 = conf["cal_pt3"]
+        self.cal_pt4 = conf["cal_pt4"]
+        self.bias = conf["bias"]
+        self.noise = conf["noise"]
+        self.spot_size = conf["spot_size"]
+
         self.total_frames = 0
 
         return
+    
+    def make_felix_data(self):
 
-    def _make_spot(loc, size, intensity=1.0):
-        """Generates a 2D Gaussian spot."""
-        xsize = self.roi.Width
-        ysize = self.roi.Height
-        x = np.linspace(-xsize/2, xsize/2, xsize)
-        y = np.linspace(-ysize/2, ysize/2, ysize)
-        X, Y = np.meshgrid(x, y)
-        spot = intensity * np.exp(-((X - loc[0])**2 + (Y - loc[1])**2) / (2 * size**2))
-        return spot
+        a = self.amplitude
+        pt1 = self.cal_pt1
+        pt2 = self.cal_pt2
+        pt3 = self.cal_pt3
+        pt4 = self.cal_pt4
+        bias = self.bias
+        noise = self.noise
+        spot_size = self.spot_size
+        image_size_x = self.roiWidth
+        image_size_y = self.roiHeight
+
+        xvals = np.arange(-image_size_x/2, image_size_x/2)
+        yvals = np.arange(-image_size_y/2, image_size_y/2)
+        X, Y = np.meshgrid(xvals, yvals)
+
+        spot1 = gaussian2d(X, Y, pt1, spot_size, a)
+        spot2 = gaussian2d(X, Y, pt2, spot_size, a)
+        spot3 = gaussian2d(X, Y, pt3, spot_size, a)
+        spot4 = gaussian2d(X, Y, pt4, spot_size, a)
+        spots_all = spot1 + spot2 + spot3 + spot4
+
+        spots_all += noise * np.random.uniform(0, 1, size=(image_size_x, image_size_y))
+        spots_all += bias
+        
+        return spots_all
 
     def setRoi(self, roi):
         super().setRoi(roi)
@@ -51,16 +83,6 @@ class AndorWFSSim(WavefrontSensor):
     
     def setBinning(self, binning):
         super().setBinning(binning)
-
-        if self.binning in [1, 2, 4]:
-            self.sdk.SetImage(
-                hbin   = self.binning,
-                vbin   = self.binning,
-                hstart = self.roiLeft,
-                hend   = self.roiLeft + self.roiWidth - 1,
-                vstart = self.roiTop,
-                vend   = self.roiTop + self.roiHeight - 1
-            )
         return
     
     def setGain(self, gain):
@@ -73,11 +95,7 @@ class AndorWFSSim(WavefrontSensor):
 
     def expose(self):
 
-        img = np.zeros((self.roiHeight, self.roiWidth)).astype(np.float32)
-        # add spots
-        img += 
-
-        self.data = img
+        self.data = self.make_felix_data().astype(np.uint16)
         super().expose()
         return
 
@@ -88,4 +106,4 @@ class AndorWFSSim(WavefrontSensor):
     
 if __name__ == "__main__":
 
-    launchComponent(AndorWFSSim, "wfs", start = True)
+    launchComponent(FELIXSimulator, "wfs", start = True)

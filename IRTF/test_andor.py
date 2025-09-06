@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import pyRTC.utils as utils
 import numpy as np
 
-from pyRTC.hardware.AndorWFS import AndorWFS
+from pyRTC.hardware import AndorWFS
 
 FILE = open("/home/felix/src/pyrtc/IRTF/output.txt", "a")
 

@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import pyRTC.utils as utils
 import numpy as np
 
-from pyRTC.hardware.ImakaDM import ImakaDM
+from pyRTC.hardware import ImakaDM
 
 #FILE = open("/home/felix/src/pyrtc/IRTF/output.txt", "a")
 FILE = open("/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/output.txt", "a")
@@ -16,15 +16,20 @@ if __name__ == "__main__":
 
         testcmd = np.zeros(dm.numActuators, dtype=np.float32)
         start = time.time()
+        t1 = start
         n = 100
         for i in range(n):
             dm.write(testcmd)
+            t2 = time.time()
             dm.sendToHardware()
-            FILE.write(dm.testval + "\n")
+            t3 = time.time()
+            FILE.write(dm.testval + f" {t3 - t2} {t2 - t1}" + "\n")
+            t1 = t3
         end = time.time()
         FILE.write(f"Time for {n} commands: %f\n" % (end - start))
         FILE.write(f"Loop rate: %f Hz\n" % (n / (end - start)))
 
     finally:
         #FILE.write("aborting\n")
+        FILE.close()
         del(dm)

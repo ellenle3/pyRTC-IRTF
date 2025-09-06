@@ -12,6 +12,11 @@ try:
 except:
     print("Spinnaker python SDK installation not found")
 try:
+    from .SpinnakerWFS import SpinnakerWFS
+    __all__.append('SpinnakerWFS')
+except:
+    print("Spinnaker python SDK installation not found")
+try:
     from .ximeaWFS import *
     __all__.append('XIMEA_WFS')
 except:
@@ -21,6 +26,12 @@ try:
     __all__.append('PIModulator')
 except:
     print("PI python SDK installation not found")
+try:
+    from .AndorWFS import AndorWFS
+    __all__.append('AndorWFS')
+except:
+    print("Andor python SDK installation not found")
+
 # try:
 #     from .OOPAOInterface import OOPAOInterface
 #     __all__.append('OOPAOInterface')
@@ -30,9 +41,12 @@ except:
 from .NCPAOptimizer import *
 from .PIDOptimizer import *
 from .loopHyperparamsOptimizer import *
+from .ImakaDM import *
+
 
 __all__.extend([
             'NCPAOptimizer', 
             'PIDOptimizer',
-            'loopOptimizer'
-           ])
+            'loopOptimizer',
+            'ImakaDM'
+            ])
