@@ -33,10 +33,7 @@ class FELIXSimulator(WavefrontSensor):
             self.setGain(conf["gain"])
 
         self.amplitude = conf["amplitude"]
-        self.cal_pt1 = conf["cal_pt1"]
-        self.cal_pt2 = conf["cal_pt2"]
-        self.cal_pt3 = conf["cal_pt3"]
-        self.cal_pt4 = conf["cal_pt4"]
+        self.calpts = np.load(conf["cal_pts"])
         self.bias = conf["bias"]
         self.noise = conf["noise"]
         self.spot_size = conf["spot_size"]
@@ -48,10 +45,10 @@ class FELIXSimulator(WavefrontSensor):
     def make_felix_data(self):
 
         a = self.amplitude
-        pt1 = self.cal_pt1
-        pt2 = self.cal_pt2
-        pt3 = self.cal_pt3
-        pt4 = self.cal_pt4
+        pt1 = self.calpts[0]
+        pt2 = self.calpts[1]
+        pt3 = self.calpts[2]
+        pt4 = self.calpts[3]
         bias = self.bias
         noise = self.noise
         spot_size = self.spot_size

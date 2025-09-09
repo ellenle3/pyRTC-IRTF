@@ -247,6 +247,55 @@ def computeSlopesSHWFSOptimNumpy(image:np.ndarray,
     # Return the difference with reference slopes
     return slopes
 
+"""
+FELIX's subapertures are tilted relative to the detector axes so the above code
+cannot be used. Instead, this function applies pre-defined masks to each subaperture
+instead of assuming that they lie in a square grid.
+
+Assumes NxN subapertures.
+"""
+def computeSlopesFELIX(image:np.ndarray, 
+                        slopes:np.ndarray, 
+                        unaberratedSlopes:np.ndarray, 
+                        threshold:float, 
+                        masks:np.ndarray, 
+                        xvals:np.array):
+    
+    num_masks = masks.shape[0]
+
+    # Threshold image
+    image = np.where(image > threshold, image.astype(np.float32), 0.0)
+
+    # Apply masks to the single image without repeating the image explicitly
+    masked_subaps = masks.astype(np.float32) * image  # (num_masks, H, W)
+
+    # Flux in each subaperture (num_masks,)
+    region_sums = masked_subaps.sum(axis=(1, 2))
+
+    # Weights for center of mass calculation
+    X, Y = np.meshgrid(xvals, xvals, indexing="xy")  # (H, W)
+
+    # Weighted sums (num_masks,)
+    weighted_sum_x = np.tensordot(masked_subaps, X, axes=([1, 2], [0, 1]))
+    weighted_sum_y = np.tensordot(masked_subaps, Y, axes=([1, 2], [0, 1]))
+
+    # Reshape to (N, N)
+    N = int(np.sqrt(num_masks))
+    weighted_sum_x = weighted_sum_x.reshape(N, N)
+    weighted_sum_y = weighted_sum_y.reshape(N, N)
+    region_sums    = region_sums.reshape(N, N)
+
+    # Valid mask
+    isvalid = region_sums > 0.0
+    s = region_sums[isvalid]
+
+    # Assign per-plane to keep slopes consistent with the old function
+    slopes[0][isvalid] = weighted_sum_x[isvalid] / s - unaberratedSlopes[0][isvalid]
+    slopes[1][isvalid] = weighted_sum_y[isvalid] / s - unaberratedSlopes[1][isvalid]
+
+    return slopes
+
+
 class SlopesProcess(pyRTCComponent):
     """
     A class to handle real-time slope computation for wavefront sensors.
@@ -439,9 +488,14 @@ class SlopesProcess(pyRTCComponent):
             
             self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
 
+        elif self.wfsType == "felix":
+            self.masks = np.load(self.conf["subApMasksFile"])  # (num_masks, i, j)
+            self.xvals = np.arange(self.masks.shape[1]).astype(int)  # should be a square
+            self.shwfsContrast = setFromConfig(self.conf, "contrast", 0)
+
         self.loadRefSlopes()
         
-        
+
     
     def read(self, block = True, SAFE=True, GPU=False):
         """
@@ -637,6 +691,15 @@ class SlopesProcess(pyRTCComponent):
                 # self.signal2D.write(slopes*self.validSubAps)
                 # slopes = np.zeros_like(self.refSlopes)
                 # self.signal.write(self.refSlopes.flatten()[:np.prod(self.signalShape)].reshape(self.signalShape))
+            
+            elif self.wfsType == "felix":
+                slopes = computeSlopesFELIX(image = image,
+                                            slopes = np.zeros_like(self.refSlopes), 
+                                            unaberratedSlopes = self.refSlopes,
+                                            threshold = self.imageNoise*self.shwfsContrast, 
+                                            masks = self.masks,
+                                            xvals = self.xvals)
+                slope_signal = slopes[self.validSubAps]
             self.signal.write(slope_signal)
             self.signal2D.write(self.computeSignal2D(slope_signal))
         

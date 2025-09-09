@@ -26,7 +26,7 @@ loop:
   # height: 384 
 
 wfs:
-  name: Andor
+  name: FELIXSimulator
   binning: 1
   downsampleFactor: 1
   exposure: 1
@@ -40,27 +40,21 @@ wfs:
   #darkFile: "/home/ellenlee/pyRTC/IRTF/calib/darkFELIX.npy"
   affinity: 0
   # gpuDevice: 0
+  amplitude: 20
+  cal_pts: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/calpts_32.npy"
+  bias: 500
+  noise: 10
+  spot_size: 2.5
   functions:
   - expose
 
 slopes:
-  type: FELIXSlopes
+  type: felix
   signalType: slopes
-  validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubApsPyWFS.npy"
-  refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/refPyWFS.npy"
-  flatNorm: True
-  pupilsRadius: 8 #8 #64
-  pupils: 
-  - 11,12
-  - 11,32
-  - 38,16 
-  - 32,32
-  # pupilsRadius: 32
-  # pupils: 
-  # - 46,48
-  # - 44,128
-  # - 150,65 #140, 60
-  # - 128,128
+ # validSubApsFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/subaps2x2_32pix.npy"
+  subApMasksFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/subaps2x2_32pix.npy"
+  refSlopesFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/refSlopes.npy"
+  contrast: 5
   affinity: 4
   # gpuDevice: 0
   functions:
