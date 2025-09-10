@@ -50,6 +50,11 @@ class ImakaDM(WavefrontCorrector):
         #flatten the mirror
         self.flatten()
 
+        if "wait" in conf:
+            self.wait = conf["wait"]
+        else:
+            self.wait = 0.0
+
         return
     
     def csclient(self, cscommand):
@@ -95,9 +100,8 @@ class ImakaDM(WavefrontCorrector):
         for num in c_chan:
             cmd_str += '{:.5f}'.format(num) + ' '
         cmd_str = cmd_str.strip()
-        message = self.csclient(cmd_str)
-        self.testval = message
-        self.num_values = len(c_chan)
+        message = self.csclient(cmd_str) # send to imaka RTC
+        time.sleep(self.wait)  # delay to prevent imaka loop seg fault
         return
 
     def __del__(self):

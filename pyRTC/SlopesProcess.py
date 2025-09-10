@@ -252,48 +252,71 @@ FELIX's subapertures are tilted relative to the detector axes so the above code
 cannot be used. Instead, this function applies pre-defined masks to each subaperture
 instead of assuming that they lie in a square grid.
 
-Assumes NxN subapertures.
+Assumes NxN subapertures. This isn't as well-optimized as the SHWFS code above but
+is good enough to run at kHz rates for a small N.
 """
-def computeSlopesFELIX(image:np.ndarray, 
-                        slopes:np.ndarray, 
-                        unaberratedSlopes:np.ndarray, 
-                        threshold:float, 
-                        masks:np.ndarray, 
-                        xvals:np.array):
-    
+def computeSlopesFELIX(image: np.ndarray,
+                       slopes: np.ndarray,
+                       unaberratedSlopes: np.ndarray,
+                       threshold: float,
+                       masks: np.ndarray,
+                       xvals: np.ndarray,
+                       rotationMatrix: np.ndarray):
+    """
+    Compute FELIX slopes and return them in the same 2D layout used by the component:
+      slopes_2D.shape == (2*N, N)
+    where N = sqrt(num_masks). First N rows are x-slopes, next N rows are y-slopes.
+    """
+
     num_masks = masks.shape[0]
 
     # Threshold image
     image = np.where(image > threshold, image.astype(np.float32), 0.0)
 
     # Apply masks to the single image without repeating the image explicitly
-    masked_subaps = masks.astype(np.float32) * image  # (num_masks, H, W)
+    # masked_subaps: (num_masks, H, W)
+    masked_subaps = masks.astype(np.float32) * image
 
     # Flux in each subaperture (num_masks,)
     region_sums = masked_subaps.sum(axis=(1, 2))
 
-    # Weights for center of mass calculation
+    # Weights for center-of-mass calculation
     X, Y = np.meshgrid(xvals, xvals, indexing="xy")  # (H, W)
 
-    # Weighted sums (num_masks,)
-    weighted_sum_x = np.tensordot(masked_subaps, X, axes=([1, 2], [0, 1]))
-    weighted_sum_y = np.tensordot(masked_subaps, Y, axes=([1, 2], [0, 1]))
+    # Weighted sums using einsum -> (num_masks,)
+    weighted_sum_x = np.einsum("ijk,jk->i", masked_subaps, X)
+    weighted_sum_y = np.einsum("ijk,jk->i", masked_subaps, Y)
 
     # Reshape to (N, N)
     N = int(np.sqrt(num_masks))
+    if N * N != num_masks:
+        raise ValueError(f"num_masks={num_masks} is not a perfect square, cannot reshape to (N,N).")
+
     weighted_sum_x = weighted_sum_x.reshape(N, N)
     weighted_sum_y = weighted_sum_y.reshape(N, N)
-    region_sums    = region_sums.reshape(N, N)
+    region_sums = region_sums.reshape(N, N)
+
+    # Build output in the *2D layout* (2N, N)
+    slopes = np.zeros((2 * N, N), dtype=np.float32)
 
     # Valid mask
     isvalid = region_sums > 0.0
-    s = region_sums[isvalid]
+    s = region_sums[isvalid]  # 1D (K,)
 
-    # Assign per-plane to keep slopes consistent with the old function
-    slopes[0][isvalid] = weighted_sum_x[isvalid] / s - unaberratedSlopes[0][isvalid]
-    slopes[1][isvalid] = weighted_sum_y[isvalid] / s - unaberratedSlopes[1][isvalid]
+    # Rotate slopes to align with detector axes
+    xcen = 0.5 * (xvals[0] + xvals[-1])
+    x_slopes = slopes[:N] - xcen
+    y_slopes = slopes[N:] - xcen
+    slopes[:N] = (rotationMatrix @ x_slopes) + xcen  # x slopes
+    slopes[N:] = (rotationMatrix @ y_slopes) + xcen  # y slopes
+
+    # Subtract unaberratedSlopes which is expected in the same (2N, N) layout
+    # Fill X slopes into rows 0..N-1, Y slopes into rows N..2N-1
+    slopes[:N][isvalid] = weighted_sum_x[isvalid] / s - unaberratedSlopes[:N][isvalid]
+    slopes[N:][isvalid] = weighted_sum_y[isvalid] / s - unaberratedSlopes[N:][isvalid]
 
     return slopes
+
 
 
 class SlopesProcess(pyRTCComponent):
@@ -489,13 +512,32 @@ class SlopesProcess(pyRTCComponent):
             self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
 
         elif self.wfsType == "felix":
+            self.rotation = setFromConfig(self.conf, "rotation", 0.0) # square to detector
+            theta = np.radians(self.rotation)
+            cos_theta = np.cos(theta)
+            sin_theta = np.sin(theta)
+            self.rotationMatrix = np.array([[cos_theta, -sin_theta], [sin_theta, cos_theta]])
+
             self.masks = np.load(self.conf["subApMasksFile"])  # (num_masks, i, j)
             self.xvals = np.arange(self.masks.shape[1]).astype(int)  # should be a square
             self.shwfsContrast = setFromConfig(self.conf, "contrast", 0)
 
-        self.loadRefSlopes()
-        
+            self.numRegions = int(np.sqrt(self.masks.shape[0]))
+            self.signal2DSize = int(2*self.numRegions**2)
+            self.signal2DShape = (2*self.numRegions,self.numRegions)
 
+            # This information is contained in the masks. Always set to all valid.
+            self.validSubApsFile = ""
+            self.validSubAps = np.ones(self.signal2DShape, dtype=bool)
+            self.loadValidSubAps()
+            
+            self.signalSize = np.sum(self.validSubAps)
+            self.signalShape = (self.signalSize,)
+
+            self.signal = ImageSHM("signal", self.signalShape, self.signalDType, gpuDevice = self.gpuDevice, consumer=False)
+            self.signal2D = ImageSHM("signal2D", self.signal2DShape, self.signalDType, gpuDevice = self.gpuDevice, consumer=False)
+
+        self.loadRefSlopes()
     
     def read(self, block = True, SAFE=True, GPU=False):
         """
@@ -698,7 +740,8 @@ class SlopesProcess(pyRTCComponent):
                                             unaberratedSlopes = self.refSlopes,
                                             threshold = self.imageNoise*self.shwfsContrast, 
                                             masks = self.masks,
-                                            xvals = self.xvals)
+                                            xvals = self.xvals,
+                                            rotationMatrix = self.rotationMatrix)
                 slope_signal = slopes[self.validSubAps]
             self.signal.write(slope_signal)
             self.signal2D.write(self.computeSignal2D(slope_signal))

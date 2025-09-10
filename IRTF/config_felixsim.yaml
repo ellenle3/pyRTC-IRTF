@@ -1,24 +1,24 @@
 loop:
-  gain: 0.1
+  gain: 0.
   leakyGain: 0.0
-  numDroppedModes: 30
+  numDroppedModes: 0
   pokeAmp: 0.02
   numItersIM: 50
   affinity: 2
   delay: 2
   method: push-pull
-  IMFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_PYWFS.npy"
-  pGain: 0.28
-  iGain: 0.066
-  dGain: 0.078
+  #IMFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_PYWFS.npy"
+  pGain: 0.
+  iGain: 0.
+  dGain: 0.
   controlLimits: [-0.05, 0.05]
   absoluteLimits: [-0.3, 0.3]
   integralLimits: [-0.1, 0.1]
   derivativeFilter: 0.1
   # gpuDevice: 0
   functions:
-  # - leakyIntegrator
-   - linearExtrapolationPOL
+   - leakyIntegrator
+  # - linearExtrapolationPOL
 
   # left: 544
   # top: 100 
@@ -34,17 +34,18 @@ wfs:
   bitDepth: 16
   left: 189
   top: 319 
-  width: 64 
-  height: 64 
+  width: 32 
+  height: 32 
   darkCount: 5
   #darkFile: "/home/ellenlee/pyRTC/IRTF/calib/darkFELIX.npy"
   affinity: 0
   # gpuDevice: 0
-  amplitude: 20
-  cal_pts: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/calpts_32.npy"
+  amplitude: 40
+  calPoints: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/calpts_32.npy"
   bias: 500
-  noise: 10
-  spot_size: 2.5
+  detectorNoise: 10
+  spotSize: 2
+  slopeNoise: 0 #pixels
   functions:
   - expose
 
@@ -54,8 +55,10 @@ slopes:
  # validSubApsFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/subaps2x2_32pix.npy"
   subApMasksFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/subaps2x2_32pix.npy"
   refSlopesFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/refSlopes.npy"
-  contrast: 5
+  imageNoise: 5.1
+  contrast: 100
   affinity: 4
+  rotation: 45.0 # degrees, CCW
   # gpuDevice: 0
   functions:
   - computeSignal
@@ -73,7 +76,7 @@ wfc:
   floatingInfluenceRadius: 1
   affinity: 1
   commandCap: 0.3
-  hardwareDelay: 0.001 #seconds
+  hardwareDelay: 0.005 #seconds
   # gpuDevice: 0
   frameDelay: 0
   functions:

@@ -13,7 +13,7 @@ def gaussian2d(x, y, c0, s, a):
     return a * np.exp( -((x-c0[0])**2 + (y-c0[1])**2) / (2*s*s) )
 
 class FELIXSimulator(WavefrontSensor):
-    """Simulates FELIX WFS data.
+    """Simulates FELIX WFS data with white noise.
     """
 
     def __init__(self, conf):
@@ -33,10 +33,11 @@ class FELIXSimulator(WavefrontSensor):
             self.setGain(conf["gain"])
 
         self.amplitude = conf["amplitude"]
-        self.calpts = np.load(conf["cal_pts"])
+        self.calpts = np.load(conf["calPoints"])
         self.bias = conf["bias"]
-        self.noise = conf["noise"]
-        self.spot_size = conf["spot_size"]
+        self.detectorNoise = conf["detectorNoise"]
+        self.slopeNoise = abs(conf["slopeNoise"])
+        self.spot_size = conf["spotSize"]
 
         self.total_frames = 0
 
@@ -45,18 +46,21 @@ class FELIXSimulator(WavefrontSensor):
     def make_felix_data(self):
 
         a = self.amplitude
-        pt1 = self.calpts[0]
-        pt2 = self.calpts[1]
-        pt3 = self.calpts[2]
-        pt4 = self.calpts[3]
+        offsets = np.random.uniform(-self.slopeNoise, self.slopeNoise, (4,2))
+
+        pt1 = self.calpts[0] + offsets[0]
+        pt2 = self.calpts[1] + offsets[1]
+        pt3 = self.calpts[2] + offsets[2]
+        pt4 = self.calpts[3] + offsets[3]
+        
         bias = self.bias
-        noise = self.noise
+        detectorNoise = self.detectorNoise
         spot_size = self.spot_size
         image_size_x = self.roiWidth
         image_size_y = self.roiHeight
 
-        xvals = np.arange(-image_size_x/2, image_size_x/2)
-        yvals = np.arange(-image_size_y/2, image_size_y/2)
+        xvals = np.arange(0, image_size_x)
+        yvals = np.arange(0, image_size_y)
         X, Y = np.meshgrid(xvals, yvals)
 
         spot1 = gaussian2d(X, Y, pt1, spot_size, a)
@@ -65,7 +69,7 @@ class FELIXSimulator(WavefrontSensor):
         spot4 = gaussian2d(X, Y, pt4, spot_size, a)
         spots_all = spot1 + spot2 + spot3 + spot4
 
-        spots_all += noise * np.random.uniform(0, 1, size=(image_size_x, image_size_y))
+        spots_all += detectorNoise * np.random.uniform(0, 1, size=(image_size_x, image_size_y))
         spots_all += bias
         
         return spots_all
@@ -93,6 +97,7 @@ class FELIXSimulator(WavefrontSensor):
     def expose(self):
 
         self.data = self.make_felix_data().astype(np.uint16)
+        time.sleep(5e-4)
         super().expose()
         return
 

@@ -42,11 +42,12 @@ from .NCPAOptimizer import *
 from .PIDOptimizer import *
 from .loopHyperparamsOptimizer import *
 from .ImakaDM import *
-
+from .FELIXsim import FELIXSimulator
 
 __all__.extend([
             'NCPAOptimizer', 
             'PIDOptimizer',
             'loopOptimizer',
+            'FELIXSimulator',
             'ImakaDM'
             ])
