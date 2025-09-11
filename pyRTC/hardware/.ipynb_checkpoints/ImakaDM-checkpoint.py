@@ -23,6 +23,9 @@ class ImakaDM(WavefrontCorrector):
         #xx, yy = np.meshgrid(np.arange(7), np.arange(7))
         #layout = np.sqrt((xx - 3)**2 + (yy-3)**2) < 3.2
         layout = np.full((6, 6), True, dtype=bool) # placeholder
+
+        # can remove layout to make 2D vector faster, write custom viewer for plotting
+        # actuator rings
         return layout
 
     def __init__(self, conf) -> None:
@@ -101,7 +104,7 @@ class ImakaDM(WavefrontCorrector):
             cmd_str += '{:.5f}'.format(num) + ' '
         cmd_str = cmd_str.strip()
         message = self.csclient(cmd_str) # send to imaka RTC
-        time.sleep(self.wait)  # delay to prevent imaka loop seg fault
+        time.sleep(self.wait)  # delay to prevent imaka loop seg
         return
 
     def __del__(self):
