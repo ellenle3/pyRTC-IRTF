@@ -49,8 +49,12 @@ class AndorWFS(WavefrontSensor):
             self.setExposure(conf["exposure"])
         if "gain" in conf:
             self.setGain(conf["gain"])
+        if "timeoutMs" in conf:
+            self.timeoutMs = int( conf["timeoutMs"] )
+        else:
+            self.timeoutMs = 2000  # milliseconds
 
-        self.total_frames = 0
+        self.oldTotalFrames = 0
 
         return
 
@@ -110,16 +114,20 @@ class AndorWFS(WavefrontSensor):
         return
 
     def expose(self):
-        
-        # Wait until new image is available
-        ret, n = self.sdk.GetTotalNumberImagesAcquired()
-        while (n == self.total_frames or ret != self.errors.DRV_SUCCESS):
-            ret, n = self.sdk.GetTotalNumberImagesAcquired()
-        self.total_frames = n
+        # Check if total number of frames has changed
+        ret, newTotal = self.sdk.GetTotalNumberImagesAcquired()
 
-        junk, img = self.sdk.GetMostRecentImage16(self.size)
-        img = np.reshape(img, (self.roiHeight, self.roiWidth))
+        # Hasn't increased yet. Wait for acquisition to complete
+        if newTotal <= self.oldTotalFrames:
+            ret = self.sdk.WaitForAcquisition()
+            newTotal += 1
+
+        ret, raw = self.sdk.GetMostRecentImage16(self.size)
+        raw = np.array(raw, copy=True)
+        img = raw.reshape((self.roiHeight, self.roiWidth))
+
         self.data = img.astype(np.uint16)
+        self.oldTotalFrames = newTotal
         super().expose()
         return
 
