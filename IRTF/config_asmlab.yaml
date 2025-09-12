@@ -73,7 +73,7 @@ wfc:
   floatingActuatorsFile: ""
   floatingInfluenceRadius: 1
   affinity: 1
-  commandCap: 0.08
+  commandCap: 0.2
   hardwareDelay: 0.001 #seconds
   wait: 0.005
   # gpuDevice: 0

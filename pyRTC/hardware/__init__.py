@@ -42,12 +42,13 @@ from .NCPAOptimizer import *
 from .PIDOptimizer import *
 from .loopHyperparamsOptimizer import *
 from .ImakaDM import *
-from .FELIXsim import FELIXSimulator
+from .FELIXsim import FELIXSimulator, IRTFASMSimulator
 
 __all__.extend([
             'NCPAOptimizer', 
             'PIDOptimizer',
             'loopOptimizer',
             'FELIXSimulator',
+            'IRTFASMSimulator',
             'ImakaDM'
             ])
