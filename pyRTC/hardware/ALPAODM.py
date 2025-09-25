@@ -1,10 +1,10 @@
-import os 
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1" 
-os.environ["MKL_NUM_THREADS"] = "1" 
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1" 
-os.environ["NUMEXPR_NUM_THREADS"] = "1" 
-os.environ['NUMBA_NUM_THREADS'] = '1'
+# import os 
+# os.environ["OMP_NUM_THREADS"] = "1"
+# os.environ["OPENBLAS_NUM_THREADS"] = "1" 
+# os.environ["MKL_NUM_THREADS"] = "1" 
+# os.environ["VECLIB_MAXIMUM_THREADS"] = "1" 
+# os.environ["NUMEXPR_NUM_THREADS"] = "1" 
+# os.environ['NUMBA_NUM_THREADS'] = '1'
 
 from pyRTC.WavefrontCorrector import *
 from pyRTC.Pipeline import *

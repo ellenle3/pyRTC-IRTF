@@ -28,7 +28,7 @@ class AndorWFS(WavefrontSensor):
         self.codes = atmcd_codes
         self.errors = atmcd_errors.Error_Codes
 
-        self.sdk.Initialize("/usr/local/etc/andor")  # Initialize camera
+        self.sdk.Initialize("/usr/local/etc/andor")  # Initialize camera, directory is valid for Linux
         self.sdk.SetReadMode(self.codes.Read_Mode.IMAGE)
         self.sdk.SetAcquisitionMode(self.codes.Acquisition_Mode.RUN_TILL_ABORT)
 
@@ -49,13 +49,24 @@ class AndorWFS(WavefrontSensor):
             self.setExposure(conf["exposure"])
         if "gain" in conf:
             self.setGain(conf["gain"])
-        if "timeoutMs" in conf:
-            self.timeoutMs = int( conf["timeoutMs"] )
+        if "HSSpeedIndex" in conf and "VSSpeedIndex" in conf:
+            self.setReadout(conf["HSSpeedIndex"], conf["VSSpeedIndex"])
         else:
-            self.timeoutMs = 2000  # milliseconds
+            self.setReadout(0, 4)  # 17 MHz, 3 us
 
         self.oldTotalFrames = 0
 
+        return
+
+    def showAvailableReadoutSpeeds(self):
+        ret, vertical_speeds = self.sdk.GetVSSpeeds()
+        ret, horizontal_speeds = self.sdk.GetHSSpeeds()
+
+    
+    @pause_acquisition
+    def setReadout(self, hi, vi):
+        self.sdk.SetHSSpeed(hi)
+        self.sdk.SetVSSpeed(vi)
         return
 
     @pause_acquisition
@@ -138,6 +149,47 @@ class AndorWFS(WavefrontSensor):
         self.sdk.SetAcquisitionMode(self.codes.Acquisition_Mode.SINGLE_SCAN)
         self.sdk.ShutDown()  # clean up
         return
+    
+    def showAvailableReadout(self):
+        # Copy of example ReadOutRates.py
+        sdk = self.sdk
+
+        HSSpeeds = []
+        VSSpeeds = []
+        amp_modes = []
+
+        (ret, ADchannel) = sdk.GetNumberADChannels()
+        print("Function GetNumberADChannels returned {} number of available channels {}".format(
+            ret, ADchannel))
+        for channel in range(0, ADchannel):
+            (ret, speed) = sdk.GetNumberHSSpeeds(channel, 0)
+            print("Function GetNumberHSSpeeds {} number of available speeds {}".format(
+                ret, speed))
+            for x in range(0, speed):
+                (ret, speed) = sdk.GetHSSpeed(channel, 0, x)
+                HSSpeeds.append(speed)
+
+            print("Available HSSpeeds in MHz {} ".format(HSSpeeds))
+
+            (ret, speed) = sdk.GetNumberVSSpeeds()
+            print("Function GetNumberVSSpeeds {} number of available speeds {}".format(
+                ret, speed))
+            for x in range(0, speed):
+                (ret, speed) = sdk.GetVSSpeed(x)
+                VSSpeeds.append(speed)
+            print("Available VSSpeeds in us {}".format(VSSpeeds))
+
+            (ret, index, speed) = sdk.GetFastestRecommendedVSSpeed()
+            print("Recommended VSSpeed {} index {}".format(speed, index))
+
+            (ret, amps) = sdk.GetNumberAmp()
+            print("Function GetNumberAmp returned {} number of amplifiers {}".format(ret, amps))
+            for x in range(0, amps):
+                (ret, name) = sdk.GetAmpDesc(x, 21)
+                amp_modes.append(name)
+
+            print("Available amplifier modes {}".format(amp_modes))
+
     
 if __name__ == "__main__":
 
