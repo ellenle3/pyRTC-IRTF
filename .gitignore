@@ -4,3 +4,4 @@ pyRTC/__pycache__
 build/
 pyRTC.egg-info/
 .DS_Store
+pyRTC/cacofoni

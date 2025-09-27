@@ -52,10 +52,28 @@ class AndorWFS(WavefrontSensor):
         if "HSSpeedIndex" in conf and "VSSpeedIndex" in conf:
             self.setReadout(conf["HSSpeedIndex"], conf["VSSpeedIndex"])
         else:
-self.setReadout(hi=0, vi=0)  # 17 MHz, 0.3 us. Note that recommended VSS is 3 us (vi=5)
+            self.setReadout(hi=0, vi=0)  # 17 MHz, 0.3 us. Note that recommended VSS is 3 us (vi=5)
+        if "temperature" in conf:
+            self.setTemperature(conf["temperature"])
 
         self.oldTotalFrames = 0
 
+        return
+
+    @pause_acquisition
+    def startCooler(self):
+        self.sdk.CoolerON()
+        return
+    
+    @pause_acquisition
+    def stopCooler(self):
+        self.sdk.CoolerOFF()
+        return
+    
+    @pause_acquisition
+    def setTemperature(self, temperature):
+        self.sdk.SetTemperature(temperature)
+        self.startCooler()
         return
 
     @pause_acquisition

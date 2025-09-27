@@ -289,8 +289,6 @@ def computeSlopesFELIX(image: np.ndarray,
 
     # Reshape to (N, N)
     N = int(np.sqrt(num_masks))
-    if N * N != num_masks:
-        raise ValueError(f"num_masks={num_masks} is not a perfect square, cannot reshape to (N,N).")
 
     weighted_sum_x = weighted_sum_x.reshape(N, N)
     weighted_sum_y = weighted_sum_y.reshape(N, N)
@@ -302,18 +300,24 @@ def computeSlopesFELIX(image: np.ndarray,
     # Valid mask
     isvalid = region_sums > 0.0
     s = region_sums[isvalid]  # 1D (K,)
+    
+    # Subtract unaberratedSlopes which is expected in the same (2N, N) layout
+    # Fill X slopes into rows 0..N-1, Y slopes into rows N..2N-1
+    slopes[:N][isvalid] = weighted_sum_x[isvalid] / s
+    slopes[N:][isvalid] = weighted_sum_y[isvalid] / s
 
     # Rotate slopes to align with detector axes
     xcen = 0.5 * (xvals[0] + xvals[-1])
-    x_slopes = slopes[:N] - xcen
-    y_slopes = slopes[N:] - xcen
-    slopes[:N] = (rotationMatrix @ x_slopes) + xcen  # x slopes
-    slopes[N:] = (rotationMatrix @ y_slopes) + xcen  # y slopes
+    x_slopes = slopes[:2] - xcen
+    y_slopes = slopes[2:] - xcen
+    points = np.stack([x_slopes.ravel(), y_slopes.ravel()], axis=0)
+    
+    rotated_points = rotationMatrix @ points
+    slopes[:2]  = rotated_points[0].reshape(2, 2) + xcen
+    slopes[2:]  = rotated_points[1].reshape(2, 2) + xcen
 
-    # Subtract unaberratedSlopes which is expected in the same (2N, N) layout
-    # Fill X slopes into rows 0..N-1, Y slopes into rows N..2N-1
-    slopes[:N][isvalid] = weighted_sum_x[isvalid] / s - unaberratedSlopes[:N][isvalid]
-    slopes[N:][isvalid] = weighted_sum_y[isvalid] / s - unaberratedSlopes[N:][isvalid]
+    slopes[:N][isvalid] -= unaberratedSlopes[:N][isvalid]
+    slopes[N:][isvalid] -= unaberratedSlopes[N:][isvalid]
 
     return slopes
 
@@ -521,6 +525,11 @@ class SlopesProcess(pyRTCComponent):
             self.masks = np.load(self.conf["subApMasksFile"])  # (num_masks, i, j)
             self.xvals = np.arange(self.masks.shape[1]).astype(int)  # should be a square
             self.shwfsContrast = setFromConfig(self.conf, "contrast", 0)
+
+            num_masks = self.masks.shape[0]
+            N = int(np.sqrt(num_masks))
+            if N * N != num_masks:
+                raise ValueError(f"num_masks={num_masks} is not a perfect square, cannot reshape to (N,N).")
 
             self.numRegions = int(np.sqrt(self.masks.shape[0]))
             self.signal2DSize = int(2*self.numRegions**2)

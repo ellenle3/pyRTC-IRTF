@@ -1,13 +1,13 @@
 loop:
-  gain: 0.1
+  gain: 0.
   leakyGain: 0.0
   numDroppedModes: 30
   pokeAmp: 0.02
-  numItersIM: 50
+  numItersIM: 300
   affinity: 2
-  delay: 2
+  delay: 10
   method: push-pull
-  IMFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_PYWFS.npy"
+  IMFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/IM_PYWFS.npy"
   pGain: 0.28
   iGain: 0.066
   dGain: 0.078
@@ -26,7 +26,7 @@ loop:
   # height: 384 
 
 wfs:
-  name: Andor
+  name: felix
   binning: 1
   downsampleFactor: 1
   exposure: 0
@@ -34,52 +34,48 @@ wfs:
   bitDepth: 16
   left: 189
   top: 319 
-  width: 32
+  width: 32 
   height: 32 
   darkCount: 5
   #darkFile: "/home/ellenlee/pyRTC/IRTF/calib/darkFELIX.npy"
   affinity: 0
   # gpuDevice: 0
+  amplitude: 40
+  calPoints: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/calpts_32.npy"
+  bias: 500
+  detectorNoise: 10
+  spotSize: 2
+  slopeNoise: 0 #pixels
+  temperature: -65
   functions:
   - expose
 
 slopes:
-  type: FELIXSlopes
+  type: felix
   signalType: slopes
-  validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubApsPyWFS.npy"
-  refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/refPyWFS.npy"
-  flatNorm: True
-  pupilsRadius: 8 #8 #64
-  pupils: 
-  - 11,12
-  - 11,32
-  - 38,16 
-  - 32,32
-  # pupilsRadius: 32
-  # pupils: 
-  # - 46,48
-  # - 44,128
-  # - 150,65 #140, 60
-  # - 128,128
+  subApMasksFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/subaps2x2_32pix.npy"
+  refSlopesFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/refSlopes_FELIX.npy"
+  imageNoise: 5.1
+  contrast: 100
   affinity: 4
+  rotation: 45.0 # degrees, CCW
   # gpuDevice: 0
   functions:
   - computeSignal
 
 wfc:
-  name: "ImakaDM"
-  port: 5556
+  name: "asm"
   numChannels: 64
   numActuators: 36
-  numModes: 36
-  #flatFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/irtf1flat.20240306b.npy"
-  saveFile: "/home/ellenlee/pyRTC/IRTF/calib/wfcShapePyWFS.npy"
-  m2cFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/m2a_identity.npy" 
+  numModes: 35
+  flatFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/irtf1flat.20240306b.npy"
   floatingActuatorsFile: ""
+  imatFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felix_theor_imat_cmds.npy"
+  m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/m2a_zernike.npy"
   floatingInfluenceRadius: 1
   affinity: 1
-  commandCap: 0.3
-  hardwareDelay: 0.001 #seconds
+  commandCap: 1
+  hardwareDelay: 0.005 #seconds
   # gpuDevice: 0
   frameDelay: 0
   functions:
