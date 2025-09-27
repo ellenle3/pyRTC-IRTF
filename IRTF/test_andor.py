@@ -5,8 +5,8 @@ import numpy as np
 
 from pyRTC.hardware import AndorWFS
 
-#FILE = open("/home/felix/src/pyrtc/IRTF/output.txt", "a")
-FILE = open("/home/imaka/asm/pyrtc/pyRTC-IRTF/IRTF/output.txt", "a")
+FILE = open("/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/output.txt", "a")
+#FILE = open("/home/imaka/asm/pyrtc/pyRTC-IRTF/IRTF/output.txt", "a")
 
 def test_exposure(wfs):
     wfs.expose()
@@ -21,16 +21,16 @@ if __name__ == "__main__":
         wfs_conf = conf["wfs"]
         wfs = AndorWFS(wfs_conf)
         test_exposure(wfs)
-        #raise RuntimeError("Test complete")
+        raise RuntimeError("Test complete")
         #wfs.expose()
         k = 0
-        Nframes = 10000
+        Nframes = 5000
         start = time.time()
         while k < Nframes:
-            t1 = time.time()
+            #t1 = time.time()
             wfs.expose()
-            t2 = time.time()
-            FILE.write(f"{wfs.oldTotalFrames} {t2 - t1}\n")
+            #t2 = time.time()
+            #FILE.write(f"{wfs.oldTotalFrames} {t2 - t1}\n")
             k += 1
         end = time.time()
         FILE.write(f"Frame rate: {Nframes / (end - start)}\n")

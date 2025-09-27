@@ -52,20 +52,15 @@ class AndorWFS(WavefrontSensor):
         if "HSSpeedIndex" in conf and "VSSpeedIndex" in conf:
             self.setReadout(conf["HSSpeedIndex"], conf["VSSpeedIndex"])
         else:
-            self.setReadout(0, 4)  # 17 MHz, 3 us
+self.setReadout(hi=0, vi=0)  # 17 MHz, 0.3 us. Note that recommended VSS is 3 us (vi=5)
 
         self.oldTotalFrames = 0
 
         return
 
-    def showAvailableReadoutSpeeds(self):
-        ret, vertical_speeds = self.sdk.GetVSSpeeds()
-        ret, horizontal_speeds = self.sdk.GetHSSpeeds()
-
-    
     @pause_acquisition
     def setReadout(self, hi, vi):
-        self.sdk.SetHSSpeed(hi)
+        self.sdk.SetHSSpeed(0, hi)
         self.sdk.SetVSSpeed(vi)
         return
 
