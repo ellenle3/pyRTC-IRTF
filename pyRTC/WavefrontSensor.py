@@ -176,6 +176,11 @@ class WavefrontSensor(pyRTCComponent):
         self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
         self.dark = np.zeros(self.imageRawShape, dtype=self.imageDType)
 
+        # param 1 is difference from previous timestamp
+        # param 2 is absolute time
+        self.wfsInfo = ImageSHM("wfsInfo", (2,), 'i8', gpuDevice = self.gpuDevice, consumer=False)
+        self.oldTimestamp = get_time_usec()
+        self.wfsInfo.write(np.array([0, self.oldTimestamp], dtype='i8'))
         self.loadDark()
 
         return
@@ -251,6 +256,11 @@ class WavefrontSensor(pyRTCComponent):
         """
         Writes the current image data to shared memory. Both raw, and dark subtracted.
         """
+        newTime = get_time_usec()
+        dt = newTime - self.oldTimestamp
+        self.wfsInfo.write( np.array([dt, newTime], dtype='i8') )
+        self.oldTimestamp = newTime
+
         self.imageRaw.write(self.data)
         img = self.data.astype(self.imageDType)
         if self.downsampleFactor > 0:

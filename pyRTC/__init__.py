@@ -10,6 +10,7 @@ from .utils import *
 from .Pipeline import *
 from .pyRTCComponent import *
 from .Telemetry import *
+from .ImakaTelemetry import *
 from .utils import *
 from .hardware import *
 # Make them available when using 'from package import *'

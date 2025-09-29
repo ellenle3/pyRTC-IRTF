@@ -32,6 +32,10 @@ class FELIXSimulator(WavefrontSensor):
             self.setExposure(conf["exposure"])
         if "gain" in conf:
             self.setGain(conf["gain"])
+        if "lag" in conf:
+            self.lag = conf["lag"]
+        else:
+            self.lag = 0
 
         self.amplitude = conf["amplitude"]
         self.calpts = np.load(conf["calPoints"])
@@ -42,6 +46,8 @@ class FELIXSimulator(WavefrontSensor):
 
         self.injectedSlopes = np.zeros_like(self.calpts)
 
+        self.offsets = np.random.uniform(-self.slopeNoise, self.slopeNoise, (4,2))
+        self.iter = 0
         return
     
     def updateInjectedSlopes(self, slopes):
@@ -53,12 +59,20 @@ class FELIXSimulator(WavefrontSensor):
     def make_felix_data(self):
 
         a = self.amplitude
-        offsets = np.random.uniform(-self.slopeNoise, self.slopeNoise, (4,2))
 
-        pt1 = self.calpts[0] + offsets[0] + self.injectedSlopes[0]
-        pt2 = self.calpts[1] + offsets[1] + self.injectedSlopes[1]
-        pt3 = self.calpts[2] + offsets[2] + self.injectedSlopes[2]
-        pt4 = self.calpts[3] + offsets[3] + self.injectedSlopes[3]
+        # Wait a certain number of iterations before updating. Otherwise system
+        # can't keep up.
+        if self.iter < self.lag:
+            self.iter += 1
+        else:
+            self.iter = 0
+            # New random offsets every lag iterations
+            self.offsets = np.random.uniform(-self.slopeNoise, self.slopeNoise, (4,2))
+
+        pt1 = self.calpts[0] + self.offsets[0] + self.injectedSlopes[0]
+        pt2 = self.calpts[1] + self.offsets[1] + self.injectedSlopes[1]
+        pt3 = self.calpts[2] + self.offsets[2] + self.injectedSlopes[2]
+        pt4 = self.calpts[3] + self.offsets[3] + self.injectedSlopes[3]
 
         bias = self.bias
         detectorNoise = self.detectorNoise

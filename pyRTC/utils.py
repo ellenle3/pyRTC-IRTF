@@ -433,3 +433,8 @@ def is_numeric(s):
         return True
     except ValueError:
         return False
+    
+def get_time_usec():
+    """Returns UNIX time as an integer in microseconds.
+    """
+    return int( time.time() * 1_000_000 )

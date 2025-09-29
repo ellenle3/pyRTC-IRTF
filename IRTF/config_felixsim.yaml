@@ -7,7 +7,7 @@ loop:
   affinity: 2
   delay: 2
   method: push-pull
-  IMFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/felix_sim_imat.npy"
+  IMFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/imat/felix_sim_imat.npy"
   pGain: 0.
   iGain: 0.
   dGain: 0.
@@ -41,21 +41,22 @@ wfs:
   affinity: 0
   # gpuDevice: 0
   amplitude: 40
-  calPoints: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/calpts_32.npy"
+  calPoints: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/felixcal/calpts_32.npy"
   bias: 500
   detectorNoise: 10
   spotSize: 2
   slopeNoise: 0 #pixels
+  lag: 100 #frames
   functions:
   - expose
 
 slopes:
   type: felix
   signalType: slopes
-  subApMasksFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/subaps2x2_32pix.npy"
-  refSlopesFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/refSlopes_FELIX.npy"
-  imageNoise: 5.1
-  contrast: 100
+  subApMasksFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/felixcal/subaps2x2_32pix.npy"
+  refSlopesFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/felixcal/calpts_32_r45_12x12closed.npy"
+  imageNoise: 510.
+  contrast: 1
   affinity: 4
   rotation: 45.0 # degrees, CCW
   # gpuDevice: 0
@@ -63,13 +64,13 @@ slopes:
   - computeSignal
 
 wfc:
-  name: "asm"
+  name: asm
   numChannels: 64
   numActuators: 36
   numModes: 35
   flatFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/irtf1flat.20240306b.npy"
   floatingActuatorsFile: ""
-  imatFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/felix_theor_imat_cmds.npy"
+  imatFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/imat/felix_theor_imat_cmds.npy"
   m2cFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/m2a_zernike.npy"
   floatingInfluenceRadius: 1
   affinity: 1
@@ -140,3 +141,8 @@ modulator:
   autoZero: True 
   affinity: 7
 
+telemetry:
+  name: imakatel
+  directory: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/data/"
+  prefix: "aocb"
+  overwrite: True

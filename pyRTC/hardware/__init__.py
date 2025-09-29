@@ -1,11 +1,11 @@
 # Import specific functions or classes from submodules
 __all__ = []
 
-try:
-    from .ALPAODM import *
-    __all__.append('ALPAODM')
-except:
-    print("ALPAO python SDK installation not found")
+# try:
+#     from .ALPAODM import *
+#     __all__.append('ALPAODM')
+# except:
+#     print("ALPAO python SDK installation not found")
 try:
     from .SpinnakerScienceCam import *
     __all__.append('spinCam')

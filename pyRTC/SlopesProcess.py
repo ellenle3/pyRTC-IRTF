@@ -545,7 +545,14 @@ class SlopesProcess(pyRTCComponent):
 
             self.signal = ImageSHM("signal", self.signalShape, self.signalDType, gpuDevice = self.gpuDevice, consumer=False)
             self.signal2D = ImageSHM("signal2D", self.signal2DShape, self.signalDType, gpuDevice = self.gpuDevice, consumer=False)
+            self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
 
+        # For slope offset buffer length
+        self.slopeOffsetBufferLength = setFromConfig(self.conf, "slopeOffsetBufferLength", 1)
+        self.slopeOffsetStep = 0  # keep track of which step in the buffer we are on.
+                                  # updates every time computeSignal() is called
+
+        self.refSlopesShm = ImageSHM("refSlopes", self.refSlopes.shape, self.refSlopes.dtype, gpuDevice = self.gpuDevice, consumer=False)
         self.loadRefSlopes()
     
     def read(self, block = True, SAFE=True, GPU=False):
@@ -623,7 +630,6 @@ class SlopesProcess(pyRTCComponent):
 
         return
 
-
     def takeRefSlopes(self):
         """
         Take reference slopes by averaging multiple slope measurements. Number of measurements
@@ -655,7 +661,8 @@ class SlopesProcess(pyRTCComponent):
             self.refSlopes1D = np.zeros_like(self.signal.read_noblock())
             self.refSlopes1D[:self.refSlopes1D.size//2] = self.refSlopes[:,:self.refSlopes.shape[1]//2][slopemask]
             self.refSlopes1D[self.refSlopes1D.size//2:] = self.refSlopes[:,self.refSlopes.shape[1]//2:][slopemask]
-            
+        
+        self.refSlopesShm.write(self.refSlopes)
         return
     
     def saveRefSlopes(self,filename=''):
@@ -755,6 +762,10 @@ class SlopesProcess(pyRTCComponent):
             self.signal.write(slope_signal)
             self.signal2D.write(self.computeSignal2D(slope_signal))
         
+        if self.slopeOffsetStep >= self.slopeOffsetBufferLength:
+            self.slopeOffsetStep = 0
+        else:
+            self.slopeOffsetStep += 1
         return
     
     def computeImageNoise(self):
@@ -881,6 +892,17 @@ class SlopesProcess(pyRTCComponent):
         else:
             self.curSignal2D[self.validSubAps] = signal
         return self.curSignal2D
+    
+    def setModalSlopeOffsets(self):
+        """
+        """
+        # need imat, or theoretical m2s file
+        pass
+
+    def setContinuousSlopeOffsets(self, gains, filename=""):
+        """
+        """
+        pass
     
 if __name__ == "__main__":
 
