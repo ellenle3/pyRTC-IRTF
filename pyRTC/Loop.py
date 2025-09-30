@@ -74,7 +74,6 @@ def loop_iter(func):
     def wrapper(self, *args, **kwargs):
         
         wfsInfo = self.wfsInfoShm.read_noblock()
-        self.loopCounter += 1
         self.loopParams.write( np.array(
             [
                 self.loopCounter,
@@ -86,6 +85,8 @@ def loop_iter(func):
             dtype=self.loopParamsDtype) )
         
         result = func(self, *args, **kwargs)
+        self.loopCounter += 1
+
         return result
     return wrapper
 
@@ -331,6 +332,10 @@ class Loop(pyRTCComponent):
                                    gpuDevice = self.gpuDevice, consumer=False)
         self.wfsInfoShm, self.wfsInfoShape, self.wfsInfoDType = initExistingShm("wfsInfo", gpuDevice = self.gpuDevice)
 
+        self.pbGain = 0
+        self.playbackBufferFile = setFromConfig(self.conf, "playbackBufferFile", "")
+        self.loadPlaybackBuffer()
+
         return
 
     def start(self):
@@ -360,6 +365,26 @@ class Loop(pyRTCComponent):
             Amplitude to set.
         """
         self.perturbAmp = amp
+        return
+    
+    def loadPlaybackBuffer(self, filename=''):
+        """
+        Load a playback buffer from a file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            File to load the playback buffer from. If not specified, uses the configured PlaybackBufferFile.
+        """
+        if filename == '':
+            filename = self.playbackBufferFile
+        if filename == '':
+            self.playbackBuffer = [np.zeros(self.wfcShape, dtype=self.wfcDType)]
+        else:
+            pb = np.load(filename)
+            if pb.shape[1] != self.numModes:
+                raise ValueError(f"Playback buffer has {pb.shape[1]} modes, which does not match numModes={self.numModes}")
+            self.playbackBuffer = pb
         return
 
     def pushPullIM(self):
@@ -476,6 +501,7 @@ class Loop(pyRTCComponent):
         if filename == '':
             filename = self.IMFile
         np.save(filename, self.IM)
+        np.save(filename.replace('.npy','_CM.npy'), self.CM) # also save the cmat
 
     def loadIM(self,filename=''):
         """
@@ -583,9 +609,13 @@ class Loop(pyRTCComponent):
                          self.nullCorrection,
                          np.float32(self.leakyGain),
                          self.numActiveModes)
+    
+        # Add in commands from playback buffer
+        idx = self.loopCounter % len(self.playbackBuffer)
+        newCorrection += self.pbGain * self.playbackBuffer[idx]
         self.sendToWfc(newCorrection, slopes=slopes)
         return
-
+    
     def pidIntegratorPOL(self):
         """
         PID integrator using the pseudo-open loop slopes.

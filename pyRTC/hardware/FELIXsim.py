@@ -80,8 +80,8 @@ class FELIXSimulator(WavefrontSensor):
         image_size_x = self.roiWidth
         image_size_y = self.roiHeight
 
-        xvals = np.arange(0, image_size_x)
-        yvals = np.arange(0, image_size_y)
+        xvals = np.arange(0, image_size_x) - image_size_x // 2
+        yvals = np.arange(0, image_size_y) - image_size_y // 2
         X, Y = np.meshgrid(xvals, yvals)
 
         spot1 = gaussian2d(X, Y, pt1, spot_size, a)

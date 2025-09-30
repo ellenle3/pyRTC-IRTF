@@ -120,6 +120,7 @@ class WavefrontCorrector(pyRTCComponent):
         self.flatModal = np.zeros(self.numModes,  dtype=self.flat.dtype)
         self.currentShape = np.zeros_like(self.flat)
         self.flatFile = setFromConfig(conf, "flatFile", "")
+        self.currentShapeShm = ImageSHM("wfcShape", self.flat.shape, self.flat.dtype, gpuDevice = self.gpuDevice, consumer=False)
         self.loadFlat()
         
         #Initialize Floating Actuator Matrix
@@ -134,8 +135,6 @@ class WavefrontCorrector(pyRTCComponent):
 
         #Initialize the basis for corrections
         self.readM2C()
-
-        
         return
 
     def setFlat(self, flat):
@@ -352,6 +351,7 @@ class WavefrontCorrector(pyRTCComponent):
                                                      self.f_M2C,
                                                      self.flat)
         
+        self.currentShapeShm.write(self.currentShape)
         #If we have a 2D SHM instance, update it 
         if isinstance(self.correctionVector2D, ImageSHM):
             self.correctionVector2D_template[self.layout] = self.currentShape - self.flat

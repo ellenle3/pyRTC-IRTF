@@ -1,12 +1,14 @@
 loop:
   gain: 0.
   leakyGain: 0.0
-  numDroppedModes: 28
+  numDroppedModes: 0 #28
   pokeAmp: 0.1
   numItersIM: 200
   affinity: 2
   delay: 2
   method: push-pull
+  playbackBufferFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/pb/cacofoni_pb_1000.0Hz_x5000_nmodes7_amp0.1_fmin4_df0.2.npy"
+  #playbackBufferFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/pb/cacofoni_pb_1000.0Hz_x5000_nmodes36_amp0.01_fmin4_df0.2.npy"
   IMFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/imat/felix_sim_imat.npy"
   pGain: 0.
   iGain: 0.
@@ -34,13 +36,14 @@ wfs:
   bitDepth: 16
   left: 189
   top: 319 
-  width: 32 
-  height: 32 
+  width: 32 #80 
+  height: 32 #80 
   darkCount: 5
   #darkFile: "/home/ellenlee/pyRTC/IRTF/calib/darkFELIX.npy"
   affinity: 0
   # gpuDevice: 0
   amplitude: 40
+ # calPoints: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/felixcal/calpts_32_offset.npy"
   calPoints: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/felixcal/calpts_32.npy"
   bias: 500
   detectorNoise: 10
@@ -53,13 +56,17 @@ wfs:
 slopes:
   type: felix
   signalType: slopes
-  subApMasksFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/felixcal/subaps2x2_32pix.npy"
+  subApMasksFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/felixcal/subaps2x2_32pix.fits"
+  #subApMasksFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/felixcal/masks_itp_posA.fits"
   refSlopesFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/felixcal/calpts_32_r45_12x12closed.npy"
+  chopMasksFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/felixcal/masks_itp.fits"
   imageNoise: 510.
   contrast: 1
   affinity: 4
   rotation: 45.0 # degrees, CCW
+  numSubAps: 4
   # gpuDevice: 0
+  #chopMasksFile: "/Users/ellenlee/Documents/pyRTC-IRTF/pyRTCView/masks_itp.npy"
   functions:
   - computeSignal
 
@@ -67,11 +74,14 @@ wfc:
   name: asm
   numChannels: 64
   numActuators: 36
-  numModes: 35
+  numModes: 7 #36
   flatFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/irtf1flat.20240306b.npy"
   floatingActuatorsFile: ""
   imatFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/imat/felix_theor_imat_cmds.npy"
-  m2cFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/m2a_zernike.npy"
+  m2cFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/z2a.20240409b.7modes.npy"
+  #m2cFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/z2a.20240409b.npy"
+  #m2cFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/z2a.empirical_norm.20250408b.7modes.npy"
+  #m2cFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/z2a.empirical_norm.20250408b.npy"
   floatingInfluenceRadius: 1
   affinity: 1
   commandCap: 1
@@ -143,6 +153,7 @@ modulator:
 
 telemetry:
   name: imakatel
-  directory: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/data/"
+  dataDir: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/data/"
   prefix: "aocb"
   overwrite: True
+  numIter: 1000

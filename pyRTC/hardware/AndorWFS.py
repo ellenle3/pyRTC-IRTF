@@ -53,11 +53,17 @@ class AndorWFS(WavefrontSensor):
             self.setReadout(conf["HSSpeedIndex"], conf["VSSpeedIndex"])
         else:
             self.setReadout(hi=0, vi=0)  # 17 MHz, 0.3 us. Note that recommended VSS is 3 us (vi=5)
-        if "temperature" in conf:
-            self.setTemperature(conf["temperature"])
+        
+        hi = setFromConfig(conf, "HSSpeedIndex", 0)
+        vi = setFromConfig(conf, "VSSpeedIndex", 0)
+        self.setReadout(hi, vi)
+
+        self.coadds = setFromConfig(conf, "coadds", 1)
+
+        temperature = setFromConfig(conf, "temperature", -65)
+        self.setTemperature(temperature)
 
         self.oldTotalFrames = 0
-
         return
 
     @pause_acquisition
@@ -139,19 +145,23 @@ class AndorWFS(WavefrontSensor):
 
     def expose(self):
         # Check if total number of frames has changed
-        ret, newTotal = self.sdk.GetTotalNumberImagesAcquired()
+        images = []
+        for i in range(self.coadds):
+            ret, newTotal = self.sdk.GetTotalNumberImagesAcquired()
 
-        # Hasn't increased yet. Wait for acquisition to complete
-        if newTotal <= self.oldTotalFrames:
-            ret = self.sdk.WaitForAcquisition()
-            newTotal += 1
+            # Hasn't increased yet. Wait for acquisition to complete
+            if newTotal <= self.oldTotalFrames:
+                ret = self.sdk.WaitForAcquisition()
+                newTotal += 1
 
-        ret, raw = self.sdk.GetMostRecentImage16(self.size)
-        raw = np.array(raw, copy=True)
-        img = raw.reshape((self.roiHeight, self.roiWidth))
+            ret, raw = self.sdk.GetMostRecentImage16(self.size)
+            raw = np.array(raw, copy=True)
+            img = raw.reshape((self.roiHeight, self.roiWidth))
 
-        self.data = img.astype(np.uint16)
-        self.oldTotalFrames = newTotal
+            images.append(img.astype(np.uint16))
+            self.oldTotalFrames = newTotal
+        
+        self.data = np.sum(images, axis=0)
         super().expose()
         return
 

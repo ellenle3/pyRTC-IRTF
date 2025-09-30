@@ -21,6 +21,7 @@ class ImakaTelemetry(pyRTCComponent):
         self.dataDir = setFromConfig(conf, "dataDir", "./data/")
         self.prefix = setFromConfig(conf, "prefix", "aocb")
         self.overwrite = setFromConfig(conf, "overwrite", True)
+        self.numIter = setFromConfig(conf, "numIter", 1000)
 
         self.mostRecentFile = ''
         self.allFiles = []
@@ -34,25 +35,54 @@ class ImakaTelemetry(pyRTCComponent):
         self.avgWfsPixels = []
         self.avgSlopes = []
         self.avgCommands = []
+        self.wfsImages = []
+        self.wfsImagesRaw = []
 
         # Number of voltage channels for DM
         self.n_channels = n_channels
         return
     
-    def save(self, niter, idx):
+    def setNumIter(self, numIter):
+        """Sets number of loop iterations to collect.
+        """
+        self.numIter = numIter
+    
+    def saveAndGet(self, idx, saveWFSImages=False):
+        """Saves and returns telemetry data following the imaka format.
+
+        Parameters:
+        idx (int): Index for the filename.
+
+        Returns:
+        HDUList: The FITS HDUList following the imaka telemetry format.
+        """
+        fname = self.save(idx, saveWFSImages)
+        return fits.open(fname)
+    
+    def save(self, idx, saveWFSImages=False):
+        """Saves telemetry to a multi-extension FITS file following the imaka
+        telemetry format.
+
+        Parameters:
+        idx (int): Index for the filename.
+
+        Returns:
+        str: The filename of the saved FITS file.
+        """
 
         fname = os.path.join(self.dataDir, f"{self.prefix}{idx:04d}.fits")
+        fname = os.path.abspath(fname)
 
-        self.recordData(niter)
+        self.recordData(saveWFSImages)
 
         # ext0: loop state (niter, np). np = 5 currently
         hdu0 = fits.PrimaryHDU(data=np.array(self.loopParams, dtype='>i8'))
 
         # ext1: wfs raw pixel data, but this is obsolete. set to zero [0] dtype=uint16
-        hdu1 = fits.ImageHDU(data=np.array([0], dtype='uint16'), name="WFS_RAW_PIXELS")
+        hdu1 = fits.ImageHDU(data=np.array(self.wfsImagesRaw, dtype='uint16'), name="WFS_RAW_PIXELS")
 
         # ext2: processed data. also obsolete. [0.], dtype=>f4
-        hdu2 = fits.ImageHDU(data=np.array([0.], dtype='>f4'), name="WFS_PROC_PIXELS")
+        hdu2 = fits.ImageHDU(data=np.array(self.wfsImages, dtype='>f4'), name="WFS_PROC_PIXELS")
 
         # ext3: wfs data. (niter, nwfs, 2*nsub) dtype=>f4
         hdu3 = fits.ImageHDU(data=np.array(self.slopes, dtype='>f4'), name="WFS_SLOPE_DATA")
@@ -105,12 +135,22 @@ class ImakaTelemetry(pyRTCComponent):
         self.clearData()
 
         return fname
-    
-    def recordData(self, niter):
+
+    def recordData(self, saveWFSImages):
+        """Listens for data over the specified number of loop iterations. Since
+        not all parameters may update every iteration, it uses non-blocking reads
+        except for the loop parameters, which will update every time the loop
+        counter needs to be incremented.
+
+        Parameters:
+        niter (int): Number of iterations to record.
+        """
 
         wfsShm, wfsDims, wfsDtype = initExistingShm("wfs")
+        wfsRaw, wfsRawDims, wfsRawDtype = initExistingShm("wfsRaw")
         signalShm, signalDims, signalDtype = initExistingShm("signal")
         wfc2DShm, wfc2DDims, wfc2DDtype = initExistingShm("wfc2D")
+        wfcShapeShm, wfcShapeDims, wfcShapeDtype = initExistingShm("wfcShape")
         loopShm, loopDims, loopDtype = initExistingShm("loop")
         refSlopesShm, refSlopesDims, refSlopesDtype = initExistingShm("refSlopes")
 
@@ -118,7 +158,7 @@ class ImakaTelemetry(pyRTCComponent):
         cumulativeSlopes = np.zeros(signalDims, dtype=signalDtype)
         cumulativeCommands = np.zeros((2, self.n_channels), dtype='f4')
 
-        for i in range(niter):
+        for i in range(self.numIter):
             
             # block here because it will update with each loop iteration
             self.loopParams.append( loopShm.read() )
@@ -130,19 +170,31 @@ class ImakaTelemetry(pyRTCComponent):
             cumulativeSlopes += slopes
 
             cmds = wfc2DShm.read_noblock()
+            cmdsRaw = wfcShapeShm.read_noblock()
             cmds = cmds.flatten()
             cout = np.zeros((2, self.n_channels))
             cout[0, :len(cmds)] = cmds
+            cout[1, :len(cmdsRaw)] = cmdsRaw
             self.commands.append(cout)
             cumulativeCommands += cout
 
             refSlopes = refSlopesShm.read_noblock()
-            self.slopeOffsets.append([refSlopes.flatten()])
-            cumulativeWFSFrame += wfsShm.read()
 
-        self.avgWfsPixels.append( cumulativeWFSFrame / niter )
-        self.avgSlopes.append( cumulativeSlopes / niter )
-        self.avgCommands.append( cumulativeCommands / niter )
+            wfsImage = wfsShm.read_noblock()
+            self.slopeOffsets.append([refSlopes.flatten()])
+            cumulativeWFSFrame += wfsImage
+
+            if saveWFSImages:
+                self.wfsImagesRaw.append( [wfsRaw.read_noblock()] )
+                self.wfsImages.append([wfsImage])
+
+        self.avgWfsPixels.append( cumulativeWFSFrame / self.numIter )
+        self.avgSlopes.append( cumulativeSlopes / self.numIter )
+        self.avgCommands.append( cumulativeCommands / self.numIter )
+
+        if not saveWFSImages:
+            self.wfsImagesRaw = [0]
+            self.wfsImages = [0.]
 
     def clearData(self):
         self.loopParams = []
@@ -152,21 +204,5 @@ class ImakaTelemetry(pyRTCComponent):
         self.avgWfsPixels = []
         self.avgSlopes = []
         self.avgCommands = []
-    
-    def read(self, filename="", dtype = None):
-
-        if filename == "":
-            filename = self.mostRecentFile
-
-        if filename in self.allFiles:
-            arr = np.fromfile(filename, 
-                            dtype=self.dTypes[self.allFiles.index(filename)])
-            arr = arr.reshape(-1, *self.dims[self.allFiles.index(filename)])
-            return arr
-        elif dtype is not None:
-            return np.fromfile(filename, dtype=dtype)
-    
-        else:
-            print("File not part of current capture, please provide a dtype")
-
-        return
+        self.wfsImages = []
+        self.wfsImagesRaw = []

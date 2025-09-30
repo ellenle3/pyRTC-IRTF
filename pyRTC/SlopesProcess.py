@@ -17,6 +17,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 from numba import jit
+import sched
 
 try:
     import torch
@@ -261,6 +262,8 @@ def computeSlopesFELIX(image: np.ndarray,
                        threshold: float,
                        masks: np.ndarray,
                        xvals: np.ndarray,
+                       xoffset: int,
+                       yoffset: int,
                        rotationMatrix: np.ndarray):
     """
     Compute FELIX slopes and return them in the same 2D layout used by the component:
@@ -303,11 +306,11 @@ def computeSlopesFELIX(image: np.ndarray,
     
     # Subtract unaberratedSlopes which is expected in the same (2N, N) layout
     # Fill X slopes into rows 0..N-1, Y slopes into rows N..2N-1
-    slopes[:N][isvalid] = weighted_sum_x[isvalid] / s
-    slopes[N:][isvalid] = weighted_sum_y[isvalid] / s
+    slopes[:N][isvalid] = weighted_sum_x[isvalid] / s - xoffset
+    slopes[N:][isvalid] = weighted_sum_y[isvalid] / s - yoffset
 
     # Rotate slopes to align with detector axes
-    xcen = 0.5 * (xvals[0] + xvals[-1])
+    xcen = 0#0.5 * (xvals[0] + xvals[-1])
     x_slopes = slopes[:2] - xcen
     y_slopes = slopes[2:] - xcen
     points = np.stack([x_slopes.ravel(), y_slopes.ravel()], axis=0)
@@ -522,16 +525,17 @@ class SlopesProcess(pyRTCComponent):
             sin_theta = np.sin(theta)
             self.rotationMatrix = np.array([[cos_theta, -sin_theta], [sin_theta, cos_theta]])
 
-            self.masks = np.load(self.conf["subApMasksFile"])  # (num_masks, i, j)
-            self.xvals = np.arange(self.masks.shape[1]).astype(int)  # should be a square
+            self.subApMasksFile = setFromConfig(self.conf, "subApMasksFile", "")
+            self.numSubAps = setFromConfig(self.conf, "numSubAps", 4)
+            subApMasksShape = (self.numSubAps, self.imageShape[0], self.imageShape[1])
+            self.subApMasksShm = ImageSHM("subApMasks", subApMasksShape, '>i8', gpuDevice = self.gpuDevice, consumer=True)
+            self.loadSubApMasks(self.subApMasksFile)
+            
+            self.maskSize = self.subApMasks.shape[1]
+            self.xvals = np.arange(self.maskSize).astype(int) - self.maskSize // 2 # should be a square
             self.shwfsContrast = setFromConfig(self.conf, "contrast", 0)
 
-            num_masks = self.masks.shape[0]
-            N = int(np.sqrt(num_masks))
-            if N * N != num_masks:
-                raise ValueError(f"num_masks={num_masks} is not a perfect square, cannot reshape to (N,N).")
-
-            self.numRegions = int(np.sqrt(self.masks.shape[0]))
+            self.numRegions = int(np.sqrt(self.subApMasks.shape[0]))
             self.signal2DSize = int(2*self.numRegions**2)
             self.signal2DShape = (2*self.numRegions,self.numRegions)
 
@@ -547,6 +551,10 @@ class SlopesProcess(pyRTCComponent):
             self.signal2D = ImageSHM("signal2D", self.signal2DShape, self.signalDType, gpuDevice = self.gpuDevice, consumer=False)
             self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
 
+            self.chopMasksFile = setFromConfig(self.conf, "chopMasksFile", "")
+            self.loadChopMasks()
+
+
         # For slope offset buffer length
         self.slopeOffsetBufferLength = setFromConfig(self.conf, "slopeOffsetBufferLength", 1)
         self.slopeOffsetStep = 0  # keep track of which step in the buffer we are on.
@@ -554,7 +562,36 @@ class SlopesProcess(pyRTCComponent):
 
         self.refSlopesShm = ImageSHM("refSlopes", self.refSlopes.shape, self.refSlopes.dtype, gpuDevice = self.gpuDevice, consumer=False)
         self.loadRefSlopes()
-    
+
+    def loadSubApMasks(self, filename=''):
+        """
+        Load the sub-aperture masks from a file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            File to load the sub-aperture masks from. If not specified, uses the configured subApMasksFile.
+        """
+        #If no file given, first try reference slopes file
+        if filename == '':
+            filename = self.subApMasksFile
+        #If we are still without a file, raise an error
+        if filename == '':
+            raise ValueError("No sub-aperture masks file specified.")
+        else: #If we have a filename
+            hdul = fits.open(filename)
+            masks = hdul[0].data
+            offsets = hdul[1].data
+
+        self.setSubApMasks(masks, offsets)
+        return
+
+    def setSubApMasks(self, masks, offsets):
+        self.subApMasks = masks
+        self.xSubApOffset = offsets[0] # in case the mask isn't centered in the image
+        self.ySubApOffset = offsets[1]
+        self.subApMasksShm.write(self.subApMasks)
+
     def read(self, block = True, SAFE=True, GPU=False):
         """
         Read the current signal.
@@ -755,8 +792,10 @@ class SlopesProcess(pyRTCComponent):
                                             slopes = np.zeros_like(self.refSlopes), 
                                             unaberratedSlopes = self.refSlopes,
                                             threshold = self.imageNoise*self.shwfsContrast, 
-                                            masks = self.masks,
+                                            masks = self.subApMasks,
                                             xvals = self.xvals,
+                                            xoffset = self.xSubApOffset,
+                                            yoffset = self.ySubApOffset,
                                             rotationMatrix = self.rotationMatrix)
                 slope_signal = slopes[self.validSubAps]
             self.signal.write(slope_signal)
@@ -903,6 +942,110 @@ class SlopesProcess(pyRTCComponent):
         """
         """
         pass
+
+    def setChopMasks(self, chopMasks, offsets):
+        self.chopMasks = chopMasks
+        self.chopMasksOffsets = offsets
+
+    def loadChopMasks(self,filename=''):
+        """
+        Load the chop mask from a file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            File to load the chop masks from. If not specified, uses the configured chopMaskFile.
+        """
+        #If no file given, first try reference slopes file
+        if filename == '':
+            filename = self.chopMasksFile
+        #If we are still without a file, set to none. This will cause chopSubaps to do nothing.
+        if filename == '':
+            chopMasks = None
+            offsets = None
+        else: #If we have a filename
+            hdul = fits.open(filename)
+            chopMasks = hdul[0].data
+            offsets = hdul[1].data
+
+        self.setChopMasks(chopMasks, offsets)
+        return
+
+    def chopSubaps(self, freq, rampFraction, numIter):
+        """Changes the masks to chop subapertures at a given frequency.
+
+        Parameters
+        freq : float
+            Frequency to chop at (Hz).
+        rampFraction : float
+            Fraction of the time spent ramping between chop positions, including
+            both ends of the chop. For example, rampFraction=0.2 means 10% of the time
+            is spent ramping up and 10% ramping down.
+        """
+        if self.wfsType != "felix":
+            raise ValueError("chopSubaps is only implemented for FELIX.")
+        if self.chopMasks is None or self.chopMasksOffsets is None:
+            raise ValueError("No chop masks loaded. Use loadChopMasks() to set the chop positions.")
+        numMasks = self.chopMasks.shape[0]
+
+        # Time between each mask change (one step in the ramp)
+        dt_ramp = rampFraction / freq / 2 / numMasks
+        # Time at one end of the chop
+        dt_ontarget = (1 - rampFraction) / freq / 2
+
+        t = 0.
+        isBackwards = False
+        scheduler = sched.scheduler(time.time, time.sleep)
+
+        for i in range(numIter):
+            for j in range(2): # two halves of the chop
+                for n in range(numMasks):
+                    if isBackwards:
+                        # increment n backwards to chop back to starting position
+                        n = numMasks - n - 1
+                    masks = self.chopMasks[n]
+                    offsets = self.chopMasksOffsets[n]
+                    scheduler.enter(t, 1, self.setSubApMasks, (masks, offsets))
+                    t += dt_ramp
+                # Stay at the end position
+                t += dt_ontarget
+                isBackwards = not isBackwards
+
+        scheduler.run()
+
+
+    def chopSubApsToPosition(self, pattern, rampLength):
+        """Changes the masks to chop subapertures to position A or B.
+
+        Parameters
+        pattern : str
+            Pattern to chop in. "AB" means chop from start to end, "BA" means end to start.
+        rampLength : float
+            Length of time to ramp between positions (seconds).
+        """
+        if pattern.upper() not in ["AB", "BA"]:
+            raise ValueError("Pattern must be 'AB' or 'BA'.")
+        if self.wfsType != "felix":
+            raise ValueError("chopSubaps is only implemented for FELIX.")
+        if self.chopMasks is None or self.chopMasksOffsets is None:
+            raise ValueError("No chop masks loaded. Use loadChopMasks() to set the chop positions.")
+        numMasks = self.chopMasks.shape[0]
+
+        t = 0.
+        dt_ramp = rampLength / numMasks
+        scheduler = sched.scheduler(time.time, time.sleep)
+
+        for n in range(numMasks):
+            if pattern == "BA":
+                # increment n backwards to chop back to starting position
+                n = numMasks - n - 1
+            masks = self.chopMasks[n]
+            offsets = self.chopMasksOffsets[n]
+            scheduler.enter(t, 1, self.setSubApMasks, (masks, offsets))
+            t += dt_ramp
+
+        scheduler.run()
+        
     
 if __name__ == "__main__":
 
