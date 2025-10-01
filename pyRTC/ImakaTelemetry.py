@@ -150,8 +150,9 @@ class ImakaTelemetry(pyRTCComponent):
         wfsRaw, wfsRawDims, wfsRawDtype = initExistingShm("wfsRaw")
         signalShm, signalDims, signalDtype = initExistingShm("signal")
         wfc2DShm, wfc2DDims, wfc2DDtype = initExistingShm("wfc2D")
-        wfcShapeShm, wfcShapeDims, wfcShapeDtype = initExistingShm("wfcShape")
+        m2cShm, m2cDims, m2cDtype = initExistingShm("m2c")
         loopShm, loopDims, loopDtype = initExistingShm("loop")
+        cmatShm, cmatDims, cmatDtype = initExistingShm("cmat")
         refSlopesShm, refSlopesDims, refSlopesDtype = initExistingShm("refSlopes")
 
         cumulativeWFSFrame = np.zeros(wfsDims, dtype=wfsDtype)
@@ -170,11 +171,13 @@ class ImakaTelemetry(pyRTCComponent):
             cumulativeSlopes += slopes
 
             cmds = wfc2DShm.read_noblock()
-            cmdsRaw = wfcShapeShm.read_noblock()
+            m2c = m2cShm.read_noblock()
+            cmat = cmatShm.read_noblock()
+            #cmdsRaw = wfcShapeShm.read_noblock() (64, 288)
             cmds = cmds.flatten()
             cout = np.zeros((2, self.n_channels))
-            cout[0, :len(cmds)] = cmds
-            cout[1, :len(cmdsRaw)] = cmdsRaw
+            cout[0, :len(cmds)] = m2c @ (cmat @ slopes)
+            cout[1, :len(cmds)] = cmds
             self.commands.append(cout)
             cumulativeCommands += cout
 

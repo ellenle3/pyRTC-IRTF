@@ -80,7 +80,7 @@ def loop_iter(func):
                 self.loopState,
                 get_time_usec(),
                 wfsInfo[0], # dt since last frame
-                wfsInfo[1], # absolute time
+                wfsInfo[1] # absolute time
             ],
             dtype=self.loopParamsDtype) )
         
@@ -322,6 +322,7 @@ class Loop(pyRTCComponent):
         self.previousDerivative = np.zeros_like(self.previousWfError)
         self.controlOutput = np.zeros_like(self.previousWfError)
 
+        self.cmatShm = ImageSHM("cmat", self.CM.shape, self.CM.dtype, gpuDevice = self.gpuDevice, consumer=False)
         self.loadIM()
 
         self.loopCounter = 0  # incremented when sendToWfc() is called
@@ -335,7 +336,6 @@ class Loop(pyRTCComponent):
         self.pbGain = 0
         self.playbackBufferFile = setFromConfig(self.conf, "playbackBufferFile", "")
         self.loadPlaybackBuffer()
-
         return
 
     def start(self):
@@ -540,7 +540,7 @@ class Loop(pyRTCComponent):
         self.gCM = self.gain*self.CM
         self.fIM = np.copy(self.IM)
         self.fIM[:,self.numActiveModes:] = 0
-        
+        self.cmatShm.write(self.CM)
         return 
         
     # @jit(nopython=True)
