@@ -24,15 +24,15 @@ wfs:
   name: felix
   binning: 1
   downsampleFactor: 1
-  exposure: 0
+  exposure: 0.005
   gain: 0
   bitDepth: 16
-  left: 189
-  top: 319 
-  width: 32 
-  height: 32 
-  darkCount: 5
-  #darkFile: "/home/ellenlee/pyRTC/IRTF/calib/darkFELIX.npy"
+  left: 400 #340
+  top: 200 #295
+  width: 64 #64
+  height: 64 #64
+  darkCount: 100
+  darkFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/darkFELIX.npy"
   affinity: 0
   # gpuDevice: 0
   temperature: -65
@@ -42,12 +42,12 @@ wfs:
 slopes:
   type: felix
   signalType: slopes
-  subApMasksFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/subaps2x2_32pix.fits"
+  subApMasksFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/subaps2x2_64pix.fits"
   #subApMasksFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/masks_itp_posA.fits"
   #refSlopesFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/calpts_32_r45_12x12closed.npy"
   refSlopesFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/refSlopes_FELIX.npy"
   chopMasksFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/masks_itp.fits"
-  imageNoise: 500.
+  imageNoise: 10.
   refSlopeCount: 1000
   contrast: 1
   affinity: 4
@@ -62,8 +62,9 @@ wfc:
   name: "asm"
   numChannels: 64
   numActuators: 36
-  numModes: 35
-  flatFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/irtf1flat.20240306b.npy"
+  numModes: 7
+  port: 5556
+  #flatFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/irtf1flat.20250809c.npy"
   floatingActuatorsFile: ""
   m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.20240409b.7modes.npy"
   #m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.20240409b.npy"

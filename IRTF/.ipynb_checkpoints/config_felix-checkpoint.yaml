@@ -1,109 +1,82 @@
 loop:
-  gain: 0.1
+  gain: 0.
   leakyGain: 0.0
-  numDroppedModes: 30
-  pokeAmp: 0.02
-  numItersIM: 50
+  numDroppedModes: 0 #28
+  pokeAmp: 0.1
+  numItersIM: 200
   affinity: 2
   delay: 2
   method: push-pull
-  IMFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_PYWFS.npy"
-  pGain: 0.28
-  iGain: 0.066
-  dGain: 0.078
+  playbackBufferFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/pb/cacofoni_pb_1000.0Hz_x5000_nmodes7_amp0.1_fmin4_df0.2.npy"
+  #IMFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/imat/felix_sim_imat.npy"
+  pGain: 0.
+  iGain: 0.
+  dGain: 0.
   controlLimits: [-0.05, 0.05]
   absoluteLimits: [-0.3, 0.3]
   integralLimits: [-0.1, 0.1]
   derivativeFilter: 0.1
   # gpuDevice: 0
   functions:
-  # - leakyIntegrator
-   - linearExtrapolationPOL
-
-  # left: 544
-  # top: 100 
-  # width: 384 
-  # height: 384 
+   - leakyIntegrator
 
 wfs:
-  name: Andor
+  name: felix
   binning: 1
   downsampleFactor: 1
-  exposure: 0
+  exposure: 0.005
   gain: 0
   bitDepth: 16
-  left: 189
-  top: 319 
-  width: 32
-  height: 32 
-  darkCount: 5
-  #darkFile: "/home/ellenlee/pyRTC/IRTF/calib/darkFELIX.npy"
+  left: 400 #340
+  top: 200 #295
+  width: 64 #64
+  height: 64 #64
+  darkCount: 100
+  darkFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/darkFELIX.npy"
   affinity: 0
   # gpuDevice: 0
+  temperature: -65
   functions:
   - expose
 
 slopes:
-  type: FELIXSlopes
+  type: felix
   signalType: slopes
-  validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubApsPyWFS.npy"
-  refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/refPyWFS.npy"
-  flatNorm: True
-  pupilsRadius: 8 #8 #64
-  pupils: 
-  - 11,12
-  - 11,32
-  - 38,16 
-  - 32,32
-  # pupilsRadius: 32
-  # pupils: 
-  # - 46,48
-  # - 44,128
-  # - 150,65 #140, 60
-  # - 128,128
+  subApMasksFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/subaps2x2_64pix.fits"
+  #subApMasksFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/masks_itp_posA.fits"
+  #refSlopesFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/calpts_32_r45_12x12closed.npy"
+  refSlopesFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/refSlopes_FELIX.npy"
+  chopMasksFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/masks_itp.fits"
+  imageNoise: 10.
+  refSlopeCount: 1000
+  contrast: 1
   affinity: 4
+  rotation: 45.0 # degrees, CCW
+  numSubAps: 4
   # gpuDevice: 0
   functions:
   - computeSignal
 
+
 wfc:
-  name: "ImakaDM"
-  port: 5556
+  name: "asm"
   numChannels: 64
   numActuators: 36
-  numModes: 36
-  #flatFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/irtf1flat.20240306b.npy"
-  saveFile: "/home/ellenlee/pyRTC/IRTF/calib/wfcShapePyWFS.npy"
-  m2cFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/m2a_identity.npy" 
+  numModes: 7
+  port: 5556
+  #flatFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/irtf1flat.20250809c.npy"
   floatingActuatorsFile: ""
-  floatingInfluenceRadius: 1
+  m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.20240409b.7modes.npy"
+  #m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.20240409b.npy"
+  #m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.empirical_norm.20250408b.7modes.npy"
+  #m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.empirical_norm.20250408b.npy"  floatingInfluenceRadius: 1
   affinity: 1
-  commandCap: 0.3
-  hardwareDelay: 0.001 #seconds
+  commandCap: 1
+  hardwareDelay: 0.005 #seconds
   # gpuDevice: 0
   frameDelay: 0
   functions:
   - sendToHardware
-
-psf:
-  name: "FLIR"
-  index: 0
-  exposure: 3333
-  gain: 0
-  bitDepth: 16
-  left: 936
-  top: 432
-  width: 128
-  height: 128
-  darkCount: 2000
-  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark_PyWFS.npy"
-  modelFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_PyWFS.npy"
-  integration: 5000
-  affinity: 6
-  functions:
-  - expose
-  - integrate
-  - computeStrehl
 
 optimizer:
   ncpa:
