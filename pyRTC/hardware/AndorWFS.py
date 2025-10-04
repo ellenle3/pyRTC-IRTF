@@ -30,8 +30,7 @@ class AndorWFS(WavefrontSensor):
 
         self.sdk.Initialize("/usr/local/etc/andor")  # Initialize camera, directory is valid for Linux
         self.sdk.SetReadMode(self.codes.Read_Mode.IMAGE)
-        self.sdk.SetShutter(1, 1, 0, 0)
-        #self.openShutter() # always open for Andor iXon L. opening and closing time is 0 ms
+        #self.sdk.SetShutter(1, 1, 0, 0)
         self.sdk.SetAcquisitionMode(self.codes.Acquisition_Mode.RUN_TILL_ABORT)
         self.sdk.SetTriggerMode(self.codes.Trigger_Mode.INTERNAL)
 
@@ -54,19 +53,17 @@ class AndorWFS(WavefrontSensor):
             self.setExposure(conf["exposure"])
         if "gain" in conf:
             self.setGain(conf["gain"])
-        #if "HSSpeedIndex" in conf and "VSSpeedIndex" in conf:
-        #    self.setReadout(conf["HSSpeedIndex"], conf["VSSpeedIndex"])
-        #else:
-        #    self.setReadout(hi=0, vi=0)  # 17 MHz, 0.3 us. Note that recommended VSS is 3 us (vi=5)
-        
-        #hi = setFromConfig(conf, "HSSpeedIndex", 0)
-        #vi = setFromConfig(conf, "VSSpeedIndex", 0)
-        #self.setReadout(hi, vi)
 
         self.coadds = setFromConfig(conf, "coadds", 1)
+        self.ADChannel = setFromConfig(conf, "ADChannel", 0)
+        self.amplifier = setFromConfig(conf, "amplifier", 0)  # 0 = EM, 1 = Conventional
+        self.hi = setFromConfig(conf, "hi", None)
+        self.vi = setFromConfig(conf, "vi", None)
+        self.setReadout(self.hi, self.vi, self.ADChannel, self.amplifier)
 
         temperature = setFromConfig(conf, "temperature", -65)
         self.setTemperature(temperature)
+        self.openShutter() # always open for Andor iXon L. opening and closing time is 0 ms
 
         self.oldTotalFrames = 0
         return
@@ -96,12 +93,51 @@ class AndorWFS(WavefrontSensor):
         return
 
     @pause_acquisition
-    def setReadout(self, hi, vi):
-        return
-        #self.sdk.SetHSSpeed(0, hi)
-        #self.sdk.SetVSSpeed(vi)
-        #return
+    def setReadout(self, hi=None, vi=None, ADChannel=0, amplifier=1):
+        """
+        Configure the readout speed.
+        If hi or vi are None, fall back to the SDK's recommended settings.
+        
+        hi : int or None
+            Horizontal shift speed index.
+        vi : int or None
+            Vertical shift speed index.
+        ADChannel : int
+            AD channel index, usually 0.
+        amplifier : int
+            Amplifier index (0 = EM, 1 = Conventional).
+        """
+        # ADChannel = 0 is typical, adjust if your camera has multiple
+        self.sdk.SetADChannel(ADChannel)
 
+        # Amplifier: 0 = EM, 1 = Conventional
+        self.sdk.SetOutputAmplifier(amplifier)
+
+        # --- Horizontal Shift Speed (MHz) ---
+        (ret, num_hs) = self.sdk.GetNumberHSSpeeds(0, 0)
+        if hi is None or hi >= num_hs:
+            hi = 0  # Default to first available
+        self.sdk.SetHSSpeed(0, hi)
+
+        # Query back what we actually set
+        ret, hsspeed = self.sdk.GetHSSpeed(0, 0, hi)
+        print(f"Using HSSpeed index {hi}: {hsspeed:.2f} MHz")
+
+        # --- Vertical Shift Speed (µs) ---
+        (ret, num_vs) = self.sdk.GetNumberVSSpeeds()
+        if vi is None or vi >= num_vs:
+            # Use recommended if available
+            ret, recommended_index, recommended_speed = self.sdk.GetFastestRecommendedVSSpeed()
+            if ret == self.errors.DRV_SUCCESS:
+                vi = recommended_index
+                print(f"Auto-selecting recommended VSSpeed {recommended_speed:.2f} µs (index {vi})")
+            else:
+                vi = 0  # Fallback
+        self.sdk.SetVSSpeed(vi)
+
+        # Query back
+        ret, vsspeed = self.sdk.GetVSSpeed(vi)
+        print(f"Using VSSpeed index {vi}: {vsspeed:.2f} µs")
     @pause_acquisition
     def setRoi(self, roi):
         super().setRoi(roi)
@@ -186,7 +222,15 @@ class AndorWFS(WavefrontSensor):
         super().__del__()
         time.sleep(1e-1)
         self.sdk.AbortAcquisition()
+
+    # def takeDark(self, closeShutter=True):
+    #     if closeShutter:
+    #         self.closeShutter()
+    #     super().takeDark()
+    #     if closeShutter:
+    #         self.openShutter()
         self.sdk.SetAcquisitionMode(self.codes.Acquisition_Mode.SINGLE_SCAN)
+        self.closeShutter()
         self.sdk.ShutDown()  # clean up
         return
     

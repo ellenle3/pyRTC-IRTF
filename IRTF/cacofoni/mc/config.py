@@ -11,8 +11,8 @@ class CacofoniConfig:
     #param_filename: str = SETTINGS["RESOURCES"]["imaka_parm"]  # imakaparm.txt
     modal_filename: str = "calib/z2a.empirical_norm.20250408b.fits"
     
-    minimum_freq_hz: float = 4.0
-    maximum_freq_hz: float = 10.0
+    minimum_freq_hz: float = 3.0
+    maximum_freq_hz: float = 5.0
 
     n_actuators: int = 7
     n_xsubapertures: int = 2 #12

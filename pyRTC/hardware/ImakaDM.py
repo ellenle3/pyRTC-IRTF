@@ -73,7 +73,47 @@ class ImakaDM(WavefrontCorrector):
         * <parameters> is a string containing all of the parameters, space delimited. 
         e.g. " -1" for "loop.state", " 0 0 0 0 0 0 ...." for something like set.act.volts
         """
-        #  Reparse the cscommand - Need the number of parameters
+        # # 1. Parse command and parameters
+        # cmd_parts = cscommand.strip().split()
+        # if len(cmd_parts) == 0:
+        #     print("No command provided.")
+        #     return
+    
+        # cmd = cmd_parts[0]
+        # params = cmd_parts[1:]
+        # nparams = len(params)
+    
+        # # 2. Build message like C client
+        # #    Format: <username> <command> <5-digit param count> <params> "\0"
+        # param_count_str = f"{nparams:05d}"          # zero-padded to 5 digits
+        # msg_str = f"{USERNAME} {cmd} {param_count_str}"
+        # if params:
+        #     msg_str += " " + " ".join(params)
+        # msg_str += "\0"   # Null terminator, just like C strings
+    
+        # # Safety check
+        # if len(msg_str) > MAX_MSG_SIZE:
+        #     print(f"Error: message too long ({len(msg_str)} bytes). Max is {MAX_MSG_SIZE}.")
+        #     return
+    
+        # print(f">pycsclient: Sending: {msg_str}")
+        
+        # # 4. Send the message as bytes
+        # self.socket.send_string(msg_str)  # zmq handles the null terminator as part of the string
+    
+        # # 5. Receive the reply
+        # reply_bytes = socket.recv()
+        # try:
+        #     # Convert to string safely
+        #     reply_str = reply_bytes.decode('utf-8', errors='ignore')
+        # except Exception as e:
+        #     print(f"Error decoding reply: {e}")
+        #     reply_str = "<non-decodable reply>"
+    
+        # 6. Print reply (full, or first 2 chars like original C client)
+        # print(f">pycsclient: Received reply [ {reply_str[:2]} ]")
+
+        # Reparse the cscommand - Need the number of parameters
         cmdstr = cscommand.split(' ')
         n = len(cmdstr)
         cmd = cmdstr[0]

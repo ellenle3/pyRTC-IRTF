@@ -35,11 +35,11 @@ def make_cacofoni_pb_pyrtc(loop_rate: float, ncb: int, nmodes: int, amp: float,
 
 if __name__ == "__main__":
 
-    loop_rate = 1000.0  # Hz
+    loop_rate = 95.2  # Hz
     fmin = 4
-    df = 0.2
-    n_modes = 36
-    amp = 0.01
+    df = 0.5
+    n_modes = 5
+    amp = 1
 
     ncb = round( loop_rate / df )  # capture a full cycle
     pb = make_cacofoni_pb_pyrtc(loop_rate=loop_rate, ncb=ncb, nmodes=n_modes, amp=amp,

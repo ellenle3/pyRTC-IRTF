@@ -7,8 +7,8 @@ loop:
   affinity: 2
   delay: 2
   method: push-pull
-  playbackBufferFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/pb/cacofoni_pb_1000.0Hz_x5000_nmodes7_amp0.1_fmin4_df0.2.npy"
-  #IMFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/imat/felix_sim_imat.npy"
+  #playbackBufferFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/pb/calib/pb/cacofoni_pb_95.2Hz_x476_nmodes7_amp1_fmin4_df0.2.npy"
+  IMFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/imat/imat.poke.20251002.c.npy"
   pGain: 0.
   iGain: 0.
   dGain: 0.
@@ -24,30 +24,31 @@ wfs:
   name: felix
   binning: 1
   downsampleFactor: 1
-  exposure: 0.005
+  exposure: 0.2
   gain: 0
   bitDepth: 16
-  left: 400 #340
-  top: 200 #295
+  left: 250 #95 #266
+  top: 255 #170 #188
   width: 64 #64
   height: 64 #64
   darkCount: 100
-  darkFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/darkFELIX.npy"
+  #darkFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/darkFELIX.npy"
   affinity: 0
   # gpuDevice: 0
   temperature: -65
+  vi: 1
   functions:
   - expose
 
 slopes:
   type: felix
   signalType: slopes
-  subApMasksFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/subaps2x2_64pix.fits"
+  subApMasksFile: "/home/felix/src/pyrtc/pyRTC-IRTF/pyRTCView/subaps2x2_64pix.fits" #50 degrees
   #subApMasksFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/masks_itp_posA.fits"
   #refSlopesFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/calpts_32_r45_12x12closed.npy"
   refSlopesFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/refSlopes_FELIX.npy"
   chopMasksFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/masks_itp.fits"
-  imageNoise: 10.
+  imageNoise: 20.
   refSlopeCount: 1000
   contrast: 1
   affinity: 4
@@ -66,9 +67,11 @@ wfc:
   port: 5556
   #flatFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/irtf1flat.20250809c.npy"
   floatingActuatorsFile: ""
-  m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.20240409b.7modes.npy"
+  #m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.empirical_norm.20250408b-2.npy"
+  #m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.20240409b.7modes.npy"
+  #m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a_12x12emp_20251002b.npy"  
   #m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.20240409b.npy"
-  #m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.empirical_norm.20250408b.7modes.npy"
+  m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.empirical_norm.20250408b.7modes.npy"
   #m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.empirical_norm.20250408b.npy"  floatingInfluenceRadius: 1
   affinity: 1
   commandCap: 1

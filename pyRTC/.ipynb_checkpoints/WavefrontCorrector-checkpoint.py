@@ -120,6 +120,7 @@ class WavefrontCorrector(pyRTCComponent):
         self.flatModal = np.zeros(self.numModes,  dtype=self.flat.dtype)
         self.currentShape = np.zeros_like(self.flat)
         self.flatFile = setFromConfig(conf, "flatFile", "")
+        #self.currentShapeShm = ImageSHM("wfcShape", self.flat.shape, self.flat.dtype, gpuDevice = self.gpuDevice, consumer=False)
         self.loadFlat()
         
         #Initialize Floating Actuator Matrix
@@ -133,9 +134,10 @@ class WavefrontCorrector(pyRTCComponent):
         self.saveFile = setFromConfig(conf, "saveFile", "wfcShape.npy")
 
         #Initialize the basis for corrections
+        m2cShape = (self.numActuators, self.numModes)
+        m2cDtype = np.float32
+        self.m2cShm = ImageSHM("m2c", m2cShape, m2cDtype, gpuDevice = self.gpuDevice, consumer=False)
         self.readM2C()
-
-        
         return
 
     def setFlat(self, flat):
@@ -285,6 +287,7 @@ class WavefrontCorrector(pyRTCComponent):
         self.numModes = self.M2C.shape[1]
         self.currentCorrection = np.zeros(self.numModes, dtype=self.flat.dtype)
         self.flatModal = self.C2M@self.flat
+        self.m2cShm.write(self.M2C)
 
     def setDelay(self,delay):
         """
@@ -336,7 +339,7 @@ class WavefrontCorrector(pyRTCComponent):
         """
         #Read a new modal correction in M2C basis
         self.currentCorrection = self.correctionVector.read()
-        self.currentCorrection -= np.mean(self.currentCorrection)
+        #self.currentCorrection -= np.mean(self.currentCorrection)
         #If we added a frame delay
         if self.frameDelay > 0:
             #Roll back shape buffer by 1
@@ -352,6 +355,7 @@ class WavefrontCorrector(pyRTCComponent):
                                                      self.f_M2C,
                                                      self.flat)
         
+        #self.currentShapeShm.write(self.currentShape)
         #If we have a 2D SHM instance, update it 
         if isinstance(self.correctionVector2D, ImageSHM):
             self.correctionVector2D_template[self.layout] = self.currentShape - self.flat

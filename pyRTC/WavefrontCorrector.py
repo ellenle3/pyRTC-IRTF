@@ -339,7 +339,7 @@ class WavefrontCorrector(pyRTCComponent):
         """
         #Read a new modal correction in M2C basis
         self.currentCorrection = self.correctionVector.read()
-        self.currentCorrection -= np.mean(self.currentCorrection)
+        #self.currentCorrection -= np.mean(self.currentCorrection)
         #If we added a frame delay
         if self.frameDelay > 0:
             #Roll back shape buffer by 1

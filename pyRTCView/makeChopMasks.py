@@ -8,14 +8,14 @@ FELIX_PIXEL_SCALE = 0.16  # arcsec/pixel
 MAX_CHOP = 5  # arcsec
 
 class ChopROISelector:
-    def __init__(self, image, masks, box_size=32):
+    def __init__(self, image, masks):
         self.dist_arcsec = None
         self.image = image
         self.image_size = image.shape[0]
         if image.shape[0] != image.shape[1]:
             raise ValueError("Image must be square")
-        self.masks = masks  # (4,32,32)
-        self.box_size = box_size
+        self.masks = masks 
+        self.box_size = masks.shape[1]
 
         # Figure and axes
         self.fig, self.ax = plt.subplots()
@@ -213,10 +213,10 @@ if __name__ == "__main__":
     else:
         raise ValueError("Image file must be .npy or .fits")
 
-    masks = fits.getdata("subaps2x2_32pix.fits", ext=0)  # shape (4,32,32)
+    masks = fits.getdata("subaps2x2_50pix.fits", ext=0)  # shape (4,N,N)
     print(masks.shape)
 
-    roi_tool = ChopROISelector(img, masks, box_size=32)
+    roi_tool = ChopROISelector(img, masks)
     coords = roi_tool.show()
     if roi_tool.dist_arcsec is not None and roi_tool.dist_arcsec > MAX_CHOP:
         raise ValueError(f"Chop distance {roi_tool.dist_arcsec:.2f}\" exceeds maximum of {MAX_CHOP}\"")

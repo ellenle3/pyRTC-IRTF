@@ -162,14 +162,15 @@ class WavefrontSensor(pyRTCComponent):
         self.darkCount = setFromConfig(conf, "darkCount", 1000)
         self.darkFile = setFromConfig(conf, "darkFile", "")
         self.downsampleFactor = setFromConfig(conf, "downsampleFactor", 0)
+        self.binning = setFromConfig(conf, "binning", 1)
 
-        self.imageRawShape = [self.width, self.height]
+        self.imageRawShape = [self.width // self.binning, self.height // self.binning]
         self.imageRawDType = np.uint16
         self.imageDType = np.int32
         self.imageShape = [self.width, self.height]
         if self.downsampleFactor > 0:
-            self.imageShape[0] = self.imageShape[0] // self.downsampleFactor
-            self.imageShape[1] = self.imageShape[1] // self.downsampleFactor
+            self.imageShape[0] = self.imageShape[0] // self.downsampleFactor // self.binning
+            self.imageShape[1] = self.imageShape[1] // self.downsampleFactor // self.binning
         self.imageRaw = ImageSHM("wfsRaw", self.imageRawShape, self.imageRawDType, gpuDevice = self.gpuDevice, consumer=False)
         self.image = ImageSHM("wfs", self.imageShape, self.imageDType, gpuDevice = self.gpuDevice, consumer=False)
 
