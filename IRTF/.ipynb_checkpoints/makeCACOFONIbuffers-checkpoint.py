@@ -35,10 +35,10 @@ def make_cacofoni_pb_pyrtc(loop_rate: float, ncb: int, nmodes: int, amp: float,
 
 if __name__ == "__main__":
 
-    loop_rate = 95.2  # Hz
+    loop_rate = 189  # Hz
     fmin = 4
     df = 0.5
-    n_modes = 5
+    n_modes = 7
     amp = 1
 
     ncb = round( loop_rate / df )  # capture a full cycle
@@ -46,4 +46,6 @@ if __name__ == "__main__":
                                 fmin=fmin, df=df)
     
     calib_dir = "calib/pb/"
+    fname = f"{calib_dir}cacofoni_pb_{loop_rate}Hz_x{ncb}_nmodes{n_modes}_amp{amp}_fmin{fmin}_df{df}.npy"
     np.save(f"{calib_dir}cacofoni_pb_{loop_rate}Hz_x{ncb}_nmodes{n_modes}_amp{amp}_fmin{fmin}_df{df}.npy", pb)
+    print(f"Saved to {fname}")

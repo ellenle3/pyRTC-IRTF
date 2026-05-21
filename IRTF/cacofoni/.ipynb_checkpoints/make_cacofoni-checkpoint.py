@@ -53,6 +53,9 @@ def make_cacofoni(telemetry_filepath=None,
 
         modcom = np.dot(commands, mirmodes.T)
         fft_actuators_all = _compute_fft(modcom)
+
+        hdu = fits.PrimaryHDU(np.abs(fft_actuators_all))
+        hdu.writeto("testact.fits")
         
         # Convert back from modal space to actuator space
         mod2act = np.linalg.pinv(mirmodes) # --changed, go from inv to pinv
@@ -64,7 +67,7 @@ def make_cacofoni(telemetry_filepath=None,
         # For debugging, matches idl better 
         sampling_freq_hz = 996  
         nyquist_freq_hz = sampling_freq_hz / 2
-        
+
     centroids = np.concatenate((xcentroids, ycentroids), axis=2).astype(np.float32)
     centroids_flat = centroids.reshape(n_steps, -1) 
     centroid_means = np.mean(centroids_flat, axis=0, keepdims=True)
@@ -75,6 +78,8 @@ def make_cacofoni(telemetry_filepath=None,
 
     n_pos_freq_bins = n_steps // 2
     freq_pos = ((np.arange(n_pos_freq_bins) + 1) / n_pos_freq_bins * nyquist_freq_hz).astype(np.float32) 
+    hdu = fits.PrimaryHDU(freq_pos)
+    hdu.writeto("freqpostest.fits")
         
     freq_mask = (freq_pos >= config.minimum_freq_hz) & (freq_pos <= config.maximum_freq_hz)
     actuator_fft_magnitude = np.abs(fft_actuators_all[0:n_pos_freq_bins, :]) 

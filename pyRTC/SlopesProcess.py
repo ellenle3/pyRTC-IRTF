@@ -1015,16 +1015,22 @@ class SlopesProcess(pyRTCComponent):
 
 
     def chopSubApsToPosition(self, pattern, rampLength):
-        """Changes the masks to chop subapertures to position A or B.
+        """Changes the masks to chop subapertures to position A or B or middle.
 
         Parameters
         pattern : str
-            Pattern to chop in. "AB" means chop from start to end, "BA" means end to start.
+            Pattern to chop in.
+                "AB" = start to end (A to B)
+                "BA" = end to start (B to A)
+                "AM" = start to middle (A to M)
+                ""
         rampLength : float
-            Length of time to ramp between positions (seconds).
+            Length the full ramp between positions A and B (seconds).
         """
-        if pattern.upper() not in ["AB", "BA"]:
-            raise ValueError("Pattern must be 'AB' or 'BA'.")
+        valid_patterns = ["AB", "BA", "AM", "BM", "MA", "MB"]
+        pattern = pattern.upper().strip()
+        if pattern not in valid_patterns:
+            raise ValueError(f"Pattern must be one of: {valid_patterns}")
         if self.wfsType != "felix":
             raise ValueError("chopSubaps is only implemented for FELIX.")
         if self.chopMasks is None or self.chopMasksOffsets is None:
@@ -1035,14 +1041,37 @@ class SlopesProcess(pyRTCComponent):
         dt_ramp = rampLength / numMasks
         scheduler = sched.scheduler(time.time, time.sleep)
 
-        for n in range(numMasks):
-            if pattern == "BA":
+        if "M" in pattern:
+            niter = numMasks // 2
+            if "B" in pattern:
+                masksToPos = self.chopMasks[niter:]
+                offsetsToPos = self.chopMasksOffsets[niter:]
+            else:
+                masksToPos = self.chopMasks[:niter+1]  #add 1 to end at middle mask (same position as above)
+                offsetsToPos = self.chopMasksOffsets[:niter+1]
+        else:
+            niter = numMasks
+            masksToPos = self.chopMasks
+            offsetsToPos = self.chopMasksOffsets
+
+        for n in range(niter):
+            if pattern.startswith("B") or pattern == "MA":
                 # increment n backwards to chop back to starting position
-                n = numMasks - n - 1
-            masks = self.chopMasks[n]
-            offsets = self.chopMasksOffsets[n]
+                n = niter - n - 1
+            masks = masksToPos[n]
+            offsets = offsetsToPos[n]
             scheduler.enter(t, 1, self.setSubApMasks, (masks, offsets))
             t += dt_ramp
+
+        
+        # for n in range(idx, numMasks):
+        #     if pattern.startswith("B") or pattern == "MA":
+        #         # increment n backwards to chop back to starting position
+        #         n = numMasks - n - 1
+        #     masks = self.chopMasks[n]
+        #     offsets = self.chopMasksOffsets[n]
+        #     scheduler.enter(t, 1, self.setSubApMasks, (masks, offsets))
+        #     t += dt_ramp
 
         scheduler.run()
         

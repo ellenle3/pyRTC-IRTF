@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 from astropy.io import fits
 
-FELIX_PIXEL_SCALE = 0.16  # arcsec/pixel
-MAX_CHOP = 5  # arcsec
+FELIX_PIXEL_SCALE = 80 / 512  # arcsec/pixel
+MAX_CHOP = 5.5  # arcsec
 
 class ChopROISelector:
     def __init__(self, image, masks):
@@ -187,12 +187,23 @@ def save_masks_to_fits(masks, centers, image_size, filename="masks.fits"):
     hdul_a.writeto(fname_a, overwrite=True)
     print(f"Saved FITS: {fname_a}")
 
-    hdu_mask_b = fits.PrimaryHDU(masks[1].astype('>i8'))
-    hdu_offsets_b = fits.ImageHDU(offsets[1], name="OFFSETS")
+    hdu_mask_b = fits.PrimaryHDU(masks[-1].astype('>i8'))
+    hdu_offsets_b = fits.ImageHDU(offsets[-1], name="OFFSETS")
     hdul_b = fits.HDUList([hdu_mask_b, hdu_offsets_b])
     fname_b = filename.replace('.fits', '_posB.fits')
     hdul_b.writeto(fname_b, overwrite=True)
     print(f"Saved FITS: {fname_b}")
+
+    # Save middle position. Need to start here to get full
+    # +/- amplitude of actuators
+    N = masks.shape[0]
+    idx = N//2
+    hdu_mask_middle = fits.PrimaryHDU(masks[idx].astype('>i8'))
+    hdu_offsets_middle = fits.ImageHDU(offsets[idx], name="OFFSETS")
+    hdul_middle = fits.HDUList([hdu_mask_middle, hdu_offsets_middle])
+    fname_middle = filename.replace('.fits', '_posM.fits')
+    hdul_middle.writeto(fname_middle, overwrite=True)
+    print(f"Saved FITS: {fname_middle}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Select two boxes and generate interpolated masks")

@@ -9,10 +9,10 @@ from dataclasses import dataclass, field
 class CacofoniConfig:
     telemetry_filename: str = "aocb0090.fits"
     #param_filename: str = SETTINGS["RESOURCES"]["imaka_parm"]  # imakaparm.txt
-    modal_filename: str = "calib/z2a.empirical_norm.20250408b.fits"
+    modal_filename: str = "calib/z2a.empirical_norm.20250408b.7modes.fits"
     
     minimum_freq_hz: float = 3.0
-    maximum_freq_hz: float = 5.0
+    maximum_freq_hz: float = 8.0
 
     n_actuators: int = 7
     n_xsubapertures: int = 2 #12

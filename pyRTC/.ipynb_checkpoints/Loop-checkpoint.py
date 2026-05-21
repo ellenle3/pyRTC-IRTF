@@ -10,10 +10,12 @@ from pyRTC.Pipeline import *
 from pyRTC.utils import *
 from pyRTC.pyRTCComponent import *
 
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 import time
 from numba import jit
+from functools import wraps
 
 @jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def leakyIntegratorNumba(slopes: np.ndarray, 
@@ -64,6 +66,29 @@ def updateCorrection(correction=np.array([], dtype=np.float32),
 #                      gCM=np.array([[]], dtype=np.float32),  
 #                      slopes=np.array([], dtype=np.float32)):
 #     return correction - np.dot(gCM,slopes) + pertub
+
+def loop_iter(func):
+    """Decorator to increment loop counter and update loop params SHM.
+    """
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        
+        wfsInfo = self.wfsInfoShm.read_noblock()
+        self.loopParams.write( np.array(
+            [
+                self.loopCounter,
+                self.loopState,
+                get_time_usec(),
+                wfsInfo[0], # dt since last frame
+                wfsInfo[1] # absolute time
+            ],
+            dtype=self.loopParamsDtype) )
+        
+        result = func(self, *args, **kwargs)
+        self.loopCounter += 1
+
+        return result
+    return wrapper
 
 class Loop(pyRTCComponent):
     """
@@ -297,8 +322,20 @@ class Loop(pyRTCComponent):
         self.previousDerivative = np.zeros_like(self.previousWfError)
         self.controlOutput = np.zeros_like(self.previousWfError)
 
+        self.cmatShm = ImageSHM("cmat", self.CM.shape, self.CM.dtype, gpuDevice = self.gpuDevice, consumer=False)
         self.loadIM()
 
+        self.loopCounter = 0  # incremented when sendToWfc() is called
+        self.loopState = -1
+        self.loopParamsDtype = 'i8'
+        self.numLoopParams = 5
+        self.loopParams = ImageSHM("loop", (self.numLoopParams,), self.loopParamsDtype,
+                                   gpuDevice = self.gpuDevice, consumer=False)
+        self.wfsInfoShm, self.wfsInfoShape, self.wfsInfoDType = initExistingShm("wfsInfo", gpuDevice = self.gpuDevice)
+
+        self.pbGain = 0
+        self.playbackBufferFile = setFromConfig(self.conf, "playbackBufferFile", "")
+        self.loadPlaybackBuffer()
         return
 
     def start(self):
@@ -329,13 +366,34 @@ class Loop(pyRTCComponent):
         """
         self.perturbAmp = amp
         return
+    
+    def loadPlaybackBuffer(self, filename=''):
+        """
+        Load a playback buffer from a file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            File to load the playback buffer from. If not specified, uses the configured PlaybackBufferFile.
+        """
+        if filename == '':
+            filename = self.playbackBufferFile
+        if filename == '':
+            self.playbackBuffer = [np.zeros(self.wfcShape, dtype=self.wfcDType)]
+        else:
+            pb = np.load(filename)
+            if pb.shape[1] != self.numModes:
+                raise ValueError(f"Playback buffer has {pb.shape[1]} modes, which does not match numModes={self.numModes}")
+            self.playbackBuffer = pb
+        return
 
     def pushPullIM(self):
         """
         Compute the interaction matrix using the push-pull method.
         """
+        self.IM *= 0 
         #For each mode
-        for i in range(self.numModes):
+        for i in range(self.numActiveModes):#range(self.numModes):
             #Reset the correction
             correction = self.flat.copy()
             #Plus amplitude
@@ -371,9 +429,17 @@ class Loop(pyRTCComponent):
 
         return
     
-    def docrimeIM(self):
+    def docrimeIM(self, lag=0):
         """
         Compute the interaction matrix using the DOCRIME method.
+
+        Parameters
+        lag: int
+            Number of loop iterations to wait after sending
+            shape to DM. (lagging DO-CRIME - use if DM is
+            slow and requires time to settle. note loop 
+            must be running with gain and leak of 0 for 
+            this to work.)
         """        
         #Send the flat command to the WFC
         self.flatten()
@@ -392,11 +458,20 @@ class Loop(pyRTCComponent):
         self.docrimeCross = np.zeros_like(self.docrimeCross)
         self.docrimeAuto = np.zeros_like(self.docrimeAuto)
 
+        lagNum = lag
+        oldCorrection = np.zeros_like(correction)
+        
+        for i in range(self.numItersIM * (lag+1)):
 
-        for i in range(self.numItersIM):
-            #Compute new random shape
-            correction = np.random.uniform(-self.pokeAmp,self.pokeAmp,correction.size).astype(correction.dtype).reshape(correction.shape)
-            
+            isLagStep = lagNum < lag
+            if isLagStep:
+                correction = oldCorrection
+                lagNum += 1
+            else:
+                correction = np.random.uniform(-self.pokeAmp,self.pokeAmp,correction.size).astype(correction.dtype).reshape(correction.shape)
+                oldCorrection = correction.copy()
+                
+            #correction[self.numActiveModes:] = 0
             #Get current WFS response
             #I put this first to match CL case
             slopes = self.signalShm.read(RELEASE_GIL = True).reshape(slopes.shape)
@@ -404,20 +479,48 @@ class Loop(pyRTCComponent):
             #Send random shape to mirror
             self.sendToWfc(correction)
 
-            add_to_buffer(self.docrimeBuffer, correction)
-
-            #Correlate Current response with old correction by delay time
-            self.docrimeCross += slopes@self.docrimeBuffer[0].T
-            self.docrimeAuto += self.docrimeBuffer[0]@self.docrimeBuffer[0].T
-
+            if not isLagStep:
+                lagNum = 0
+                add_to_buffer(self.docrimeBuffer, correction)
+        
+                #Correlate Current response with old correction by delay time
+                self.docrimeCross += slopes@self.docrimeBuffer[0].T
+                self.docrimeAuto += self.docrimeBuffer[0]@self.docrimeBuffer[0].T
+    
         self.docrimeCross /= self.numItersIM 
         self.docrimeAuto /= self.numItersIM
         self.IM = self.docrimeCross @np.linalg.inv(self.docrimeAuto)
-
+    
         self.docrimeCross = np.zeros_like(self.docrimeCross)
         self.docrimeAuto = np.zeros_like(self.docrimeAuto)
-
+    
         return
+                
+        # for i in range(self.numItersIM):
+        #     #Compute new random shape
+        #     correction = np.random.uniform(-self.pokeAmp,self.pokeAmp,correction.size).astype(correction.dtype).reshape(correction.shape)
+        #     #correction[self.numActiveModes:] = 0
+        #     #Get current WFS response
+        #     #I put this first to match CL case
+        #     slopes = self.signalShm.read(RELEASE_GIL = True).reshape(slopes.shape)
+
+        #     #Send random shape to mirror
+        #     self.sendToWfc(correction)
+
+        #     add_to_buffer(self.docrimeBuffer, correction)
+
+        #     #Correlate Current response with old correction by delay time
+        #     self.docrimeCross += slopes@self.docrimeBuffer[0].T
+        #     self.docrimeAuto += self.docrimeBuffer[0]@self.docrimeBuffer[0].T
+
+        # self.docrimeCross /= self.numItersIM 
+        # self.docrimeAuto /= self.numItersIM
+        # self.IM = self.docrimeCross @np.linalg.inv(self.docrimeAuto)
+
+        # self.docrimeCross = np.zeros_like(self.docrimeCross)
+        # self.docrimeAuto = np.zeros_like(self.docrimeAuto)
+
+        # return
 
     def computeIM(self):
         """
@@ -443,6 +546,7 @@ class Loop(pyRTCComponent):
         if filename == '':
             filename = self.IMFile
         np.save(filename, self.IM)
+        np.save(filename.replace('.npy','_CM.npy'), self.CM) # also save the cmat
 
     def loadIM(self,filename=''):
         """
@@ -481,7 +585,7 @@ class Loop(pyRTCComponent):
         self.gCM = self.gain*self.CM
         self.fIM = np.copy(self.IM)
         self.fIM[:,self.numActiveModes:] = 0
-        
+        self.cmatShm.write(self.CM)
         return 
         
     # @jit(nopython=True)
@@ -508,6 +612,7 @@ class Loop(pyRTCComponent):
         # Update Command Vector c_n = g*CM*s_{POL} + (1 − g) c_{n-1}  https://arxiv.org/pdf/1903.12124.pdf Eq 3
         return (1-self.gain)*correction - np.dot(self.gCM,s_pol)
 
+    @loop_iter
     def standardIntegratorPOL(self):
         """
         Standard integrator using the pseudo open loop slopes.
@@ -520,10 +625,9 @@ class Loop(pyRTCComponent):
                                                  slopes=residual_slopes)
         newCorrection[self.numActiveModes:] = 0
         self.sendToWfc(newCorrection)
-
         return
 
-    
+    @loop_iter
     def standardIntegrator(self):
         """
         Standard integrator.
@@ -538,6 +642,7 @@ class Loop(pyRTCComponent):
         self.sendToWfc(newCorrection, slopes=slopes)
         return
     
+    @loop_iter
     def leakyIntegrator(self):
         """
         Leaky integrator.
@@ -549,9 +654,13 @@ class Loop(pyRTCComponent):
                          self.nullCorrection,
                          np.float32(self.leakyGain),
                          self.numActiveModes)
+    
+        # Add in commands from playback buffer
+        idx = self.loopCounter % len(self.playbackBuffer)
+        newCorrection += self.pbGain * self.playbackBuffer[idx]
         self.sendToWfc(newCorrection, slopes=slopes)
         return
-
+    
     def pidIntegratorPOL(self):
         """
         PID integrator using the pseudo-open loop slopes.
@@ -561,6 +670,7 @@ class Loop(pyRTCComponent):
         polSlopes = slopes - self.fIM@correction
         return self.pidIntegrator(slopes=polSlopes, correction=correction)
 
+    @loop_iter
     def pidIntegrator(self, slopes = None, correction = None):
         """
         PID integrator.
@@ -619,6 +729,7 @@ class Loop(pyRTCComponent):
         
         return
 
+    @loop_iter
     def linearExtrapolationPOL(self):
         """
         Standard integrator using the pseudo open loop slopes.
@@ -639,7 +750,7 @@ class Loop(pyRTCComponent):
         newCorrection[self.numActiveModes:] = 0
         self.sendToWfc(newCorrection)
 
-
+    @loop_iter
     def linearPredictIntegrator(self):
         
         if self.bufferCount > len(self.buffer):
@@ -676,10 +787,15 @@ class Loop(pyRTCComponent):
         
         return 
 
+    def setNumDroppedModes(self, numDroppedModes):
+        self.numDroppedModes = numDroppedModes
+        self.computeCM() # recompute CM to reflect new number of active modes
 
     def sendToWfc(self, correction, slopes=None):
+
         #Get an initial slope reading to set shapes
         correction = correction.reshape(self.wfcShape)
+        #correction[self.numActiveModes:] = 0 - I think this needs to stay here for DO-CRIME
         if self.clDocrime and isinstance(slopes, np.ndarray):
 
             slopes = slopes.reshape(slopes.size, 1)

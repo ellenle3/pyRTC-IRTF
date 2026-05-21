@@ -429,9 +429,17 @@ class Loop(pyRTCComponent):
 
         return
     
-    def docrimeIM(self):
+    def docrimeIM(self, lag=0):
         """
         Compute the interaction matrix using the DOCRIME method.
+
+        Parameters
+        lag: int
+            Number of loop iterations to wait after sending
+            shape to DM. (lagging DO-CRIME - use if DM is
+            slow and requires time to settle. note loop 
+            must be running with gain and leak of 0 for 
+            this to work.)
         """        
         #Send the flat command to the WFC
         self.flatten()
@@ -450,10 +458,19 @@ class Loop(pyRTCComponent):
         self.docrimeCross = np.zeros_like(self.docrimeCross)
         self.docrimeAuto = np.zeros_like(self.docrimeAuto)
 
+        lagNum = lag
+        oldCorrection = np.zeros_like(correction)
+        
+        for i in range(self.numItersIM * (lag+1)):
 
-        for i in range(self.numItersIM):
-            #Compute new random shape
-            correction = np.random.uniform(-self.pokeAmp,self.pokeAmp,correction.size).astype(correction.dtype).reshape(correction.shape)
+            isLagStep = lagNum < lag
+            if isLagStep:
+                correction = oldCorrection
+                lagNum += 1
+            else:
+                correction = np.random.uniform(-self.pokeAmp,self.pokeAmp,correction.size).astype(correction.dtype).reshape(correction.shape)
+                oldCorrection = correction.copy()
+                
             #correction[self.numActiveModes:] = 0
             #Get current WFS response
             #I put this first to match CL case
@@ -462,20 +479,48 @@ class Loop(pyRTCComponent):
             #Send random shape to mirror
             self.sendToWfc(correction)
 
-            add_to_buffer(self.docrimeBuffer, correction)
-
-            #Correlate Current response with old correction by delay time
-            self.docrimeCross += slopes@self.docrimeBuffer[0].T
-            self.docrimeAuto += self.docrimeBuffer[0]@self.docrimeBuffer[0].T
-
+            if not isLagStep:
+                lagNum = 0
+                add_to_buffer(self.docrimeBuffer, correction)
+        
+                #Correlate Current response with old correction by delay time
+                self.docrimeCross += slopes@self.docrimeBuffer[0].T
+                self.docrimeAuto += self.docrimeBuffer[0]@self.docrimeBuffer[0].T
+    
         self.docrimeCross /= self.numItersIM 
         self.docrimeAuto /= self.numItersIM
         self.IM = self.docrimeCross @np.linalg.inv(self.docrimeAuto)
-
+    
         self.docrimeCross = np.zeros_like(self.docrimeCross)
         self.docrimeAuto = np.zeros_like(self.docrimeAuto)
-
+    
         return
+                
+        # for i in range(self.numItersIM):
+        #     #Compute new random shape
+        #     correction = np.random.uniform(-self.pokeAmp,self.pokeAmp,correction.size).astype(correction.dtype).reshape(correction.shape)
+        #     #correction[self.numActiveModes:] = 0
+        #     #Get current WFS response
+        #     #I put this first to match CL case
+        #     slopes = self.signalShm.read(RELEASE_GIL = True).reshape(slopes.shape)
+
+        #     #Send random shape to mirror
+        #     self.sendToWfc(correction)
+
+        #     add_to_buffer(self.docrimeBuffer, correction)
+
+        #     #Correlate Current response with old correction by delay time
+        #     self.docrimeCross += slopes@self.docrimeBuffer[0].T
+        #     self.docrimeAuto += self.docrimeBuffer[0]@self.docrimeBuffer[0].T
+
+        # self.docrimeCross /= self.numItersIM 
+        # self.docrimeAuto /= self.numItersIM
+        # self.IM = self.docrimeCross @np.linalg.inv(self.docrimeAuto)
+
+        # self.docrimeCross = np.zeros_like(self.docrimeCross)
+        # self.docrimeAuto = np.zeros_like(self.docrimeAuto)
+
+        # return
 
     def computeIM(self):
         """
