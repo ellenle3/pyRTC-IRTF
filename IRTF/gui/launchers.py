@@ -72,3 +72,13 @@ def reset_shms():
                  "psfShort", "psfLong", "wfsInfo", "loop", "refSlopes", "subApMasks",
                  "cmat", "m2c"] #list of SHMs to reset
     clear_shms(shm_names)
+
+def reset_wfs_shm(wfs, loop, slopes):
+
+    # reset the WFS SHM
+
+    # reset slopes
+
+    # reset loop wfsInfo SHM
+    
+    return wfs, loop, slopes

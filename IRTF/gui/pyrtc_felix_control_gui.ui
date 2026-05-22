@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>783</width>
-    <height>955</height>
+    <height>959</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -816,7 +816,7 @@ QPushButton:pressed {
        </spacer>
       </item>
       <item>
-       <widget class="QPushButton" name="gridPanelButtons_LogOut_button">
+       <widget class="QPushButton" name="gridPanelButtons_ShutDown_button">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
           <horstretch>0</horstretch>
@@ -825,7 +825,7 @@ QPushButton:pressed {
         </property>
         <property name="minimumSize">
          <size>
-          <width>80</width>
+          <width>100</width>
           <height>35</height>
          </size>
         </property>
@@ -1055,7 +1055,7 @@ QPushButton:pressed {
 }</string>
         </property>
         <property name="text">
-         <string>Log Out</string>
+         <string>Shut Down</string>
         </property>
        </widget>
       </item>

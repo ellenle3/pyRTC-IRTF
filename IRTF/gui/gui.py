@@ -1,8 +1,7 @@
 import sys
 import os
-import json
 import signal
-from PyQt6.QtCore import QTimer, QEvent
+from PyQt6.QtCore import QTimer, QEvent, QThread, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QWidget
 from PyQt6 import uic
 from PyQt6.QtGui import QIntValidator, QDoubleValidator, QColor, QTextCursor, QIcon
@@ -72,7 +71,7 @@ class MainWindow(QWidget):
         self.gridPanelButtons_GO_button.clicked.connect(self.on_go_clicked)
         self.gridPanelButtons_STOP_button.clicked.connect(self.on_stop_clicked)
         self.gridPanelButtons_PANIC_button.clicked.connect(self.on_panic_clicked)
-        self.gridPanelButtons_LogOut_button.clicked.connect(self.on_logout_clicked)
+        self.gridPanelButtons_ShutDown_button.clicked.connect(self.on_shutdown_clicked)
 
         # Changing camera tabs
         self.tabControls_AO_Camera.currentChanged.connect(self.on_ao_camera_tab_changed)
@@ -93,7 +92,7 @@ class MainWindow(QWidget):
         # SimCam controls
         self.gridSimCam_itime_entry.setValidator(QDoubleValidator(0.0, 30.0, 5)) 
         self.gridSimCam_Amplitude_entry.setValidator(QDoubleValidator(0.0, 100, 2))
-        self.gridSimCam_SlopeNoise_entry.setValidator(QDoubleValidator(0.0, 10, 2))
+        self.gridSimCam_SlopeNoise_entry.setValidator(QDoubleValidator(0.0, 2, 2))
         self.gridSimCam_lag_entry.setValidator(QIntValidator(0, 100))
         self.gridSimCam_itime_entry.returnPressed.connect(self.on_simcam_itime_return_pressed)
         self.gridSimCam_Array_button.clicked.connect(self.on_simcam_array_clicked)
@@ -137,6 +136,7 @@ class MainWindow(QWidget):
         else:
             self.components["wfs"].run("resume")
             self.log("GO - start acquisition")
+            self.update_status_camera("Currently acquiring frames")
 
     def on_stop_clicked(self):
         if self.cam_last_index == 0:
@@ -145,11 +145,12 @@ class MainWindow(QWidget):
         else:
             self.components["wfs"].run("pause")
             self.log("STOP - stop acquisition")
-
+            self.update_status_camera("Acquisition paused")
+            
     def on_panic_clicked(self):
         self.log("PANIC! Opening the loop and resetting the system!", color="red")
     
-    def on_logout_clicked(self):
+    def on_shutdown_clicked(self):
         self.log("Shutting down all hardware components and exiting...")
 
     # -----------------
@@ -168,11 +169,11 @@ class MainWindow(QWidget):
     # Camera controls
     # ---------------
     def on_ao_camera_tab_changed(self, index):
-        print(f"AO Camera tab changed to index: {index}")
         # Index 0 = OFF, 1 = IXON (Andor), 2 = Simulator
 
         # First, turn off cameras if switching away from them
         if self.cam_last_index in [1, 2]:
+            self.update_status_camera("Stopping...")
             # Open the loop
             if self.components["wfs"] is not None:
                 self.log("Turning off camera. Opening the loop...")
@@ -185,40 +186,43 @@ class MainWindow(QWidget):
                 self.log("SimCam OFF")
                 try_shutdown(self.components["wfc"])
                 self.log("DM simulator OFF")
-
+            
+            self.update_status_camera("OFF")
+            
         # Initialize new camera if switching to it
         if index == 1:
-            self._start_andor()
+            status = "Initializing FELIX..."
+            log = "Starting Andor camera."
+            self.worker = HardwareWorker("Andor", self._start_andor, status_message=status, log_message=log)
+            self.worker.log_signal.connect(self.log)
+            self.worker.status_signal.connect(self.update_status_camera)
+            self.worker.done.connect(self._enable_window)  # re-enable window when done
+            self.setEnabled(False)  # disable entire window
+            self.worker.start()
 
         elif index == 2:
-            self._start_simcam()
+            status = "Initializing simulation..."
+            log = "Starting SimCam and DM simulator. You will need to re-init the ASM."
+            self.worker = HardwareWorker("SimCam", self._start_simcam, status_message=status, log_message=log)
+            self.worker.log_signal.connect(self.log)
+            self.worker.status_signal.connect(self.update_status_camera)
+            self.worker.done.connect(self._enable_window)  # re-enable window when done
+            self.setEnabled(False)  # disable entire window
+            self.worker.start()
             
         self.cam_last_index = index
 
-    def _start_simcam(self):
-        self.log("Initializing SimCam")
-        self.components["wfs"] = get_felixsim()
-        self.components["wfs"].launch()
-        self.components["wfs"].run("pause")  # Start with frames paused
-        self.update_status_camera("Awaiting acquisition...")
+    def _enable_window(self):
+        self.setEnabled(True)
 
-        if self.components["wfc"] is not None:
-            self.log("Shutting down existing DM. You will need to reinitialize it.",
-                        color="orange")
-            try_shutdown(self.components["wfc"])
-
-        self.log("Initializing DM simulator")
-        self.components["wfc"] = get_dmsim()
-        get_dmsim().launch()
-
+    # Andor
     def _start_andor(self):
-        self.log("Initializing Andor")
         self.log("NOT IMPLEMENTED YET", "red")
         #self.components["wfs"] = get_andor()
         #self.components["wfs"].launch()
         #self.components["wfs"].run("pause")
+        self.update_status_camera("Ready for acquisition")
 
-    # Andor
     def on_ixon_itime_return_pressed(self):
         texpos = float(self.gridIXON_itime_entry.text())
         self.components["wfs"].run("setExposure", texpos)
@@ -250,6 +254,19 @@ class MainWindow(QWidget):
     # ---------
     # Simulator
     # ---------
+    def _start_simcam(self):
+
+        self.components["wfs"] = get_felixsim()
+        self.components["wfs"].launch()
+        self.components["wfs"].run("pause")  # Start with frames paused
+
+        if self.components["wfc"] is not None:
+            try_shutdown(self.components["wfc"])
+        self.components["wfc"] = get_dmsim()
+        get_dmsim().launch()
+
+        self.update_status_camera("Ready for acquisition")
+
     def on_simcam_itime_return_pressed(self):
         texpos = float(self.gridSimCam_itime_entry.text())
         self.components["wfs"].run("setExposure", texpos)
@@ -279,6 +296,16 @@ class MainWindow(QWidget):
     def on_simcam_lag_return_pressed(self):
         lag = int(self.gridSimCam_lag_entry.text())
         self.components["wfs"].run("setLag", lag)
+
+    def reset_wfs_shm_only(self):
+        # Pause the WFS camera
+
+        # Reset WFS component and relaunch the SHM
+        
+        # Reset Slopes process
+        
+        # If loop exists, reset only the wfsInfo component
+        pass
 
     # -----------
     # Loop params
@@ -346,6 +373,32 @@ class MainWindow(QWidget):
                                 QTextCursor.MoveMode.KeepAnchor)
             cursor.deleteChar()
             cursor.deleteChar()  # removes newline
+
+class HardwareWorker(QThread):
+
+    # Class to help launch hardware (or perform other hardware-related functions)
+    # in a separate thread to prevent the GUI from hanging.
+
+    log_signal = pyqtSignal(str, str)
+    status_signal = pyqtSignal(str)
+    done = pyqtSignal(str)  # pass back name so caller knows which finished
+
+    def __init__(self, name, function, status_message=None, log_message=None, *args, **kwargs):
+        super().__init__()
+        self.name = name
+        self.function = function
+        self.args = args
+        self.kwargs = kwargs
+        self.status_message = status_message
+        self.log_message = log_message
+
+    def run(self):
+        if self.status_message is not None:
+            self.status_signal.emit(self.status_message)
+        if self.log_message is not None:
+            self.log_signal.emit(self.log_message, "blue")
+        result = self.function(*self.args, **self.kwargs)
+        self.done.emit(self.name)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
