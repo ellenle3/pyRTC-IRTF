@@ -1,10 +1,11 @@
+from sympy import factor
+
 from pyRTC.WavefrontSensor import *
-from pyRTC.WavefrontCorrector import *
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 
+import threading
 from time import sleep
-
 
 def gaussian2d(x, y, c0, s, a):
     """
@@ -28,21 +29,28 @@ class FELIXSimulator(WavefrontSensor):
             self.setRoi(roi)
         if "binning" in conf:
             self.setBinning(conf["binning"])
+        else:
+            self.setBinning(1)
         if "exposure" in conf:
             self.setExposure(conf["exposure"])
+        else:
+            self.setExposure(0.001)
         if "gain" in conf:
             self.setGain(conf["gain"])
         if "lag" in conf:
-            self.lag = conf["lag"]
+            self.setLag(conf["lag"])
         else:
-            self.lag = 0
+            self.setLag(0)
 
-        self.amplitude = conf["amplitude"]
+        self.setAmplitude(conf["amplitude"])
+        self.setSlopeNoise(abs(conf["slopeNoise"]))
         self.calpts = np.load(conf["calPoints"])
         self.bias = conf["bias"]
         self.detectorNoise = conf["detectorNoise"]
-        self.slopeNoise = abs(conf["slopeNoise"])
         self.spotSize = conf["spotSize"]
+
+        self._pause_event = threading.Event()
+        self._pause_event.set()  # Start in unpaused state
 
         self.injectedSlopes = np.zeros_like(self.calpts)
 
@@ -116,80 +124,41 @@ class FELIXSimulator(WavefrontSensor):
         return
 
     def expose(self):
-
-        self.data = self.make_felix_data().astype(np.uint16)
-        time.sleep(5e-4)
+        self._pause_event.wait()  # Wait if paused
+        image = self.make_felix_data().astype(np.uint16)
+        h, w = image.shape
+        b = self.binning
+        image = image[:h//b*b, :w//b*b].reshape(
+            h//b, b, w//b, b).mean(axis=(1, 3))
+        image = image.astype(np.uint16)
+        self.data = image
+        time.sleep(1e-3 + float(self.exposure))
         super().expose()
+        return
+    
+    def pause(self):
+        self._pause_event.clear()
+        return
+
+    def resume(self):
+        self._pause_event.set()
+        return
+    
+    def setLag(self, lag):
+        self.lag = lag
+        return
+    
+    def setAmplitude(self, amplitude):
+        self.amplitude = amplitude
+        return
+    
+    def setSlopeNoise(self, slopeNoise):
+        self.slopeNoise = slopeNoise
         return
 
     def __del__(self):
         super().__del__()
         time.sleep(1e-1)
-        return
-
-class IRTFASMSimulator(WavefrontCorrector):
-
-    @staticmethod
-    def generate_layout_irtf1():
-        """Creates the layout of IRTF-ASM-1."""
-        #xx, yy = np.meshgrid(np.arange(7), np.arange(7))
-        #layout = np.sqrt((xx - 3)**2 + (yy-3)**2) < 3.2
-        layout = np.full((6, 6), True, dtype=bool) # placeholder
-
-        # can remove layout to make 2D vector faster, write custom viewer for plotting
-        # actuator rings
-        return layout
-
-    def __init__(self, conf, wfs) -> None:
-        #Initialize the pyRTC super class
-        super().__init__(conf)
-
-        self.numActuators = conf["numActuators"]
-        self.CAP = conf["commandCap"]  # Maximum command amplitude
-
-        layout = self.generate_layout_irtf1()
-        self.setLayout(layout)
-
-        # imat is needed to figure out what slopes to inject
-        self.imatFile = conf["imatFile"]
-        self.loadIM(self.imatFile)
-
-        if conf["floatingActuatorsFile"][-4:] == '.npy':
-            floatActuatorInds = np.load(conf["floatingActuatorsFile"])
-            self.deactivateActuators(floatActuatorInds)
-
-        #flatten the mirror
-        self.flatten()
-
-        if not isinstance(wfs, FELIXSimulator):
-            raise ValueError("IRTFASMSimulator requires a FELIXSimulator WFS instance.")
-        self.wfs = wfs
-        return
-
-    def loadIM(self, file = ''):
-        if file == '':
-            file = self.imatFile
-        self.IM = np.load(file)
-    
-    def sendToHardware(self):
-        #Do all of the normal updating of the super class
-        super().sendToHardware()
-        #Cap the Commands to reduce likelihood of DM failiure
-        self.currentShape = np.clip(self.currentShape, -self.CAP, self.CAP)
-
-        shapeToSend = self.currentShape.copy() - self.flat
-        slopes = self.IM @ shapeToSend
-        # slopes are x then y. Reshape to ((x,y), (x,y), ...)
-        xslopes = slopes[:4]
-        yslopes = slopes[4:]
-        slopes = np.vstack((xslopes, yslopes)).T
-        self.wfs.updateInjectedSlopes(slopes)
-        return
-
-    def __del__(self):
-        super().__del__()
-        self.currentShape = np.zeros(self.numActuators)
-        self.sendToHardware()
         return
     
 if __name__ == "__main__":

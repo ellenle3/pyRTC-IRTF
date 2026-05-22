@@ -10,10 +10,16 @@ def pause_acquisition(func):
     """Decorator to stop and start acquisition around a function call."""
     @wraps(func)
     def wrapper(self, *args, **kwargs):
-        self.sdk.AbortAcquisition()
-        result = func(self, *args, **kwargs)
-        self.sdk.StartAcquisition()
-        return result
+        # Do not pause and resume if the acquisition is not running
+        status = self.sdk.GetStatus()
+        if not status == self.errors.DRV_ACQUIRING:
+            result = func(self, *args, **kwargs)
+            return result
+        else:
+            self.sdk.AbortAcquisition()
+            result = func(self, *args, **kwargs)
+            self.sdk.StartAcquisition()
+            return result
     return wrapper
 
 class AndorWFS(WavefrontSensor):
@@ -66,6 +72,15 @@ class AndorWFS(WavefrontSensor):
         self.openShutter() # always open for Andor iXon L. opening and closing time is 0 ms
 
         self.oldTotalFrames = 0
+
+        return
+    
+    def pause(self):
+        self.sdk.AbortAcquisition()
+        return
+    
+    def resume(self):
+        self.sdk.StartAcquisition()
         return
 
     @pause_acquisition

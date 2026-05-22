@@ -42,7 +42,8 @@ from .NCPAOptimizer import *
 from .PIDOptimizer import *
 from .loopHyperparamsOptimizer import *
 from .ImakaDM import *
-from .FELIXsim import FELIXSimulator, IRTFASMSimulator
+from .FELIXsim import FELIXSimulator
+from .DMsim import IRTFASMSimulator
 
 __all__.extend([
             'NCPAOptimizer', 

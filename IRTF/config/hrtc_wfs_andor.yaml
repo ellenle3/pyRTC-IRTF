@@ -1,0 +1,19 @@
+wfs:
+  name: felix
+  binning: 1
+  downsampleFactor: 1
+  exposure: 0.2
+  gain: 0
+  bitDepth: 16
+  left: 70
+  top: 23
+  width: 64
+  height: 64
+  darkCount: 100
+  #darkFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/darkFELIX.npy"
+  affinity: 0
+  # gpuDevice: 0
+  temperature: -65
+  vi: 1
+  functions:
+  - expose
