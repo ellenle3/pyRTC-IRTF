@@ -15,6 +15,7 @@ from launchers import *
 # Get the directory of the current Python file
 BASE_DIR = Path(__file__).parent
 
+IPC_PATH = BASE_DIR / "ipc_files.json"
 MAX_LOG_LINES = 100  # max length of console log
 
 class MainWindow(QWidget):
@@ -191,7 +192,7 @@ class MainWindow(QWidget):
             
         # Initialize new camera if switching to it
         if index == 1:
-            status_start = "Initializing FELIX"
+            status_start = "Initializing Andor"
             log = "Starting Andor camera. Please wait..."
             status_end = "Ready for acquisition."
             self.worker = HardwareInitWorker("Andor", self._start_ixon, status_start=status_start,
@@ -245,21 +246,66 @@ class MainWindow(QWidget):
         self.components["wfs"].launch()
         self.components["wfs"].run("stop")
 
+        # Initialize readout options
+        capabilities = self.components["wfs"].run("getCapabilities")
+    
+        # Make the capabilities list with the same convention as the Felix XUI:
+        # amplifier_channel_hsspeed
+        print(capabilities)
+        print(capabilities["AmpModes"])
+        cvidx = capabilities["AmpModes"].index("Conventional")
+
+        self.IXON_ReadOut_Options = {}
+        self.gridIXON_ReadOut_combo.clear()
+        for hi, hsspeed in enumerate(capabilities["HSSpeeds"]):
+            hsspeed_str = str( int(hsspeed) ).zfill(2)
+            key = f"CV_16bit_{hsspeed_str}MHz"
+            self.IXON_ReadOut_Options[key] = {
+                "hi": hi,
+                "ADChannel": 0, # 16 bit
+                "amplifier": cvidx # only use CV
+            }
+            self.gridIXON_ReadOut_combo.addItem([key])
+
+        self.IXON_VSSpeed_Options = {}
+        self.gridIXON_VSS_combo.clear()
+        for vi, vsspeed in enumerate(capabilities["VSSpeeds"]):
+            vsspeed_str = str( int(vsspeed*1000) )
+            key = f"{vsspeed_str}ns"
+            self.IXON_VSSpeed_Options[key] = {
+                "vi": vi
+            }
+            self.gridIXON_VSS_combo.addItem(key)
+
+        # Set to default values
+        # default_readout = "CV_16bit_17MHz"
+        # default_vss = "500ns"
+
+        # self.gridIXON_ReadOut_combo.setCurrentText(default_readout)
+        # self.gridIXON_VSS_combo.setCurrentText(default_vss)
+
     def on_ixon_coadd_return_pressed(self):
         coadds = int(self.gridIXON_coadd_entry.text())
         self.components["wfs"].run("setCoadds", coadds)
+        self.log("coadds " + str(coadds))
 
     def on_ixon_array_clicked(self):
         pass
 
     def on_ixon_readout_changed(self):
-        pass
+        key = self.gridIXON_ReadOut_combo.currentText()
+        options = self.IXON_ReadOut_Options[key]
+        self.components["wfs"].run("setReadout", options["hi"], None, options["ADChannel"], options["amplifier"])
+        self.log("Readout mode " + key)
 
     def on_ixon_preampgain_changed(self):
         pass
 
     def on_ixon_vss_changed(self):
-        pass
+        key = self.gridIXON_VSS_combo.currentText()
+        options = self.IXON_VSSpeed_Options[key]
+        self.components["wfs"].run("setVSSpeed", options["vi"])
+        self.log("Vertical shift speed " + key)
 
     def on_ixon_roi_clicked(self):
         pass

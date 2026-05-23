@@ -141,15 +141,16 @@ class AndorWFS(WavefrontSensor):
 
         # --- Vertical Shift Speed (µs) ---
         (ret, num_vs) = self.sdk.GetNumberVSSpeeds()
-        if vi is None or vi >= num_vs:
-            # Use recommended if available
-            ret, recommended_index, recommended_speed = self.sdk.GetFastestRecommendedVSSpeed()
-            if ret == self.errors.DRV_SUCCESS:
-                vi = recommended_index
-                print(f"Auto-selecting recommended VSSpeed {recommended_speed:.2f} µs (index {vi})")
-            else:
-                vi = 0  # Fallback
-        self.sdk.SetVSSpeed(vi)
+        if vi is not None:
+            if vi >= num_vs:
+                # Use recommended if available
+                ret, recommended_index, recommended_speed = self.sdk.GetFastestRecommendedVSSpeed()
+                if ret == self.errors.DRV_SUCCESS:
+                    vi = recommended_index
+                    print(f"Auto-selecting recommended VSSpeed {recommended_speed:.2f} µs (index {vi})")
+                else:
+                    vi = 0  # Fallback
+            self.sdk.SetVSSpeed(vi)
 
         # Query back
         ret, vsspeed = self.sdk.GetVSSpeed(vi)
@@ -290,7 +291,16 @@ class AndorWFS(WavefrontSensor):
 
             print("Available amplifier modes {}".format(amp_modes))
 
-    
+        capabilities = {
+            "ADchannels": ADchannel,  # number of channels, usually only 1
+            "HSSpeeds": HSSpeeds,
+            "VSSpeeds": VSSpeeds,
+            "VSSpeedRecommended": {"index": index, "speed": speed},
+            "AmpModes": amp_modes
+        }
+
+        return capabilities
+
 if __name__ == "__main__":
 
     launchComponent(AndorWFS, "wfs", start = True)
