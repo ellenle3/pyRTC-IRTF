@@ -3,10 +3,14 @@ wfc:
   numChannels: 64
   numActuators: 36
   numModes: 7 #36
-  flatFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/irtf1flat.20240306b.npy"
+  # flatFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/irtf1flat.20240306b.npy"
+  # floatingActuatorsFile: ""
+  # imatFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/imat/felix_theor_imat_cmds.npy"
+  # m2cFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/z2a.20240409b.7modes.npy"
+  flatFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/irtf1flat.20240306b.npy"
   floatingActuatorsFile: ""
-  imatFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/imat/felix_theor_imat_cmds.npy"
-  m2cFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/z2a.20240409b.7modes.npy"
+  imatFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/imat/felix_theor_imat_cmds.npy"
+  m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.20240409b.7modes.npy"
   #m2cFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/z2a.20240409b.npy"
   #m2cFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/z2a.empirical_norm.20250408b.7modes.npy"
   #m2cFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/z2a.empirical_norm.20250408b.npy"

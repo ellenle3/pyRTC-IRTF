@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 import signal
 from PyQt6.QtCore import QTimer, QEvent, QThread, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QWidget
@@ -7,7 +8,7 @@ from PyQt6 import uic
 from PyQt6.QtGui import QIntValidator, QDoubleValidator, QColor, QTextCursor, QIcon
 
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
+#sys.path.insert(0, str(Path(__file__).parent))
 #from IRTF.gui.pyrtcgui_setup import Ui_pyrtcGUI
 from launchers import *
 
@@ -80,10 +81,10 @@ class MainWindow(QWidget):
         # IXON controls
         self.gridIXON_itime_entry.setValidator(QDoubleValidator(0.0, 600.0, 5))  # exposure time between 0 and 600 seconds with 5 decimal places
         self.gridIXON_coadd_entry.setValidator(QIntValidator(1, 1000))
-        self.gridIXON_itime_entry.returnPressed.connect(self.on_ixon_itime_return_pressed)
+        self.gridIXON_itime_entry.returnPressed.connect(lambda: self.on_itime_return_pressed(self.gridIXON_itime_entry))
         self.gridIXON_coadd_entry.returnPressed.connect(self.on_ixon_coadd_return_pressed)
         self.gridIXON_Array_button.clicked.connect(self.on_ixon_array_clicked)
-        self.gridIXON_XYbinning_combo.currentTextChanged.connect(self.on_ixon_xybinning_changed)
+        self.gridIXON_XYbinning_combo.currentTextChanged.connect(lambda: self.on_xybinning_changed(self.gridIXON_XYbinning_combo))
         self.gridIXON_ReadOut_combo.currentTextChanged.connect(self.on_ixon_readout_changed)
         self.gridIXON_PreampGain_combo.currentTextChanged.connect(self.on_ixon_preampgain_changed)
         self.gridIXON_VSS_combo.currentTextChanged.connect(self.on_ixon_vss_changed)
@@ -94,9 +95,9 @@ class MainWindow(QWidget):
         self.gridSimCam_Amplitude_entry.setValidator(QDoubleValidator(0.0, 100, 2))
         self.gridSimCam_SlopeNoise_entry.setValidator(QDoubleValidator(0.0, 2, 2))
         self.gridSimCam_lag_entry.setValidator(QIntValidator(0, 100))
-        self.gridSimCam_itime_entry.returnPressed.connect(self.on_simcam_itime_return_pressed)
+        self.gridSimCam_itime_entry.returnPressed.connect(lambda: self.on_itime_return_pressed(self.gridSimCam_itime_entry))
         self.gridSimCam_Array_button.clicked.connect(self.on_simcam_array_clicked)
-        self.gridSimCam_XYbinning_combo.currentTextChanged.connect(self.on_simcam_xybinning_changed)
+        self.gridSimCam_XYbinning_combo.currentTextChanged.connect(lambda: self.on_xybinning_changed(self.gridSimCam_XYbinning_combo))
         self.gridSimCam_ROI_button.clicked.connect(self.on_simcam_roi_clicked)
         self.gridSimCam_Amplitude_entry.returnPressed.connect(self.on_simcam_amplitude_return_pressed)
         self.gridSimCam_SlopeNoise_entry.returnPressed.connect(self.on_simcam_slope_noise_return_pressed)
@@ -105,7 +106,6 @@ class MainWindow(QWidget):
         # AO params
         self.gridLoop_OpenLoop_button.clicked.connect(self.on_open_loop_clicked)
         self.gridLoop_CloseLoop_button.clicked.connect(self.on_close_loop_clicked)
-
         self.gridLoop_gain_entry.setValidator(QDoubleValidator(0.0, 1.0, 4))
         self.gridLoop_leak_entry.setValidator(QDoubleValidator(0.0, 1.0, 4))
         self.gridLoop_pbgain_entry.setValidator(QDoubleValidator(0.0, 1.0, 4))
@@ -134,16 +134,16 @@ class MainWindow(QWidget):
             # No camera selected
             self.log("No camera selected", color="orange")
         else:
-            self.components["wfs"].run("resume")
+            self.components["wfs"].run("start")
             self.log("GO - start acquisition")
-            self.update_status_camera("Currently acquiring frames")
+            self.update_status_camera("Acquisition in progress")
 
     def on_stop_clicked(self):
         if self.cam_last_index == 0:
             # No camera selected
             self.log("No camera selected", color="orange")
         else:
-            self.components["wfs"].run("pause")
+            self.components["wfs"].run("stop")
             self.log("STOP - stop acquisition")
             self.update_status_camera("Acquisition paused")
             
@@ -191,53 +191,66 @@ class MainWindow(QWidget):
             
         # Initialize new camera if switching to it
         if index == 1:
-            status = "Initializing FELIX..."
-            log = "Starting Andor camera."
-            self.worker = HardwareWorker("Andor", self._start_andor, status_message=status, log_message=log)
+            status_start = "Initializing FELIX"
+            log = "Starting Andor camera. Please wait..."
+            status_end = "Ready for acquisition."
+            self.worker = HardwareInitWorker("Andor", self._start_ixon, status_start=status_start,
+                                             log=log, status_end=status_end)
             self.worker.log_signal.connect(self.log)
             self.worker.status_signal.connect(self.update_status_camera)
             self.worker.done.connect(self._enable_window)  # re-enable window when done
-            self.setEnabled(False)  # disable entire window
+            self._disable_window()
             self.worker.start()
 
         elif index == 2:
-            status = "Initializing simulation..."
+            status_start = "Initializing simulation"
             log = "Starting SimCam and DM simulator. You will need to re-init the ASM."
-            self.worker = HardwareWorker("SimCam", self._start_simcam, status_message=status, log_message=log)
+            log += "\n  This can take a few seconds. Please wait..."
+            status_end = "Ready for acquisition."
+            self.worker = HardwareInitWorker("SimCam", self._start_simcam, status_start=status_start,
+                                             log=log, status_end=status_end)
             self.worker.log_signal.connect(self.log)
             self.worker.status_signal.connect(self.update_status_camera)
             self.worker.done.connect(self._enable_window)  # re-enable window when done
-            self.setEnabled(False)  # disable entire window
+            self._disable_window()
             self.worker.start()
             
         self.cam_last_index = index
 
+    def _disable_window(self):
+        self.setEnabled(False)
+        self.gridPanelButtons_PANIC_button.setEnabled(True)  # Emergency open loop always available
+
     def _enable_window(self):
         self.setEnabled(True)
 
-    # Andor
-    def _start_andor(self):
-        self.log("NOT IMPLEMENTED YET", "red")
-        #self.components["wfs"] = get_andor()
-        #self.components["wfs"].launch()
-        #self.components["wfs"].run("pause")
-        self.update_status_camera("Ready for acquisition")
+    # Shared functions
 
-    def on_ixon_itime_return_pressed(self):
-        texpos = float(self.gridIXON_itime_entry.text())
+    def on_itime_return_pressed(self, entry):
+        texpos = float(entry.text())
         self.components["wfs"].run("setExposure", texpos)
-    
+        self.log("itime " + str(texpos))
+
+    def on_xybinning_changed(self, combo):
+        binning = combo.currentIndex()
+        self.log("Resetting shared memories as data size has changed. One moment...", "orange")
+        # Destroy data viewer
+        #reset_shms()
+        # Open data viewer window again
+        #self.components["wfs"].run("setBinning", binning)
+
+    # IXON
+    def _start_ixon(self):
+        self.components["wfs"] = get_andor()
+        self.components["wfs"].launch()
+        self.components["wfs"].run("stop")
+
     def on_ixon_coadd_return_pressed(self):
         coadds = int(self.gridIXON_coadd_entry.text())
         self.components["wfs"].run("setCoadds", coadds)
 
     def on_ixon_array_clicked(self):
         pass
-
-    def on_ixon_xybinning_changed(self):
-        binning = self.gridIXON_XYbinning_combo.currentIndex()
-        self.log("Resetting shared memories as data size has changed. One moment...", "orange")
-        self.components["wfs"].run("setBinning", binning)
 
     def on_ixon_readout_changed(self):
         pass
@@ -251,36 +264,19 @@ class MainWindow(QWidget):
     def on_ixon_roi_clicked(self):
         pass
     
-    # ---------
-    # Simulator
-    # ---------
+    # SimCam
     def _start_simcam(self):
-
         self.components["wfs"] = get_felixsim()
         self.components["wfs"].launch()
-        self.components["wfs"].run("pause")  # Start with frames paused
+        self.components["wfs"].run("stop")  # Start with frames paused
 
         if self.components["wfc"] is not None:
             try_shutdown(self.components["wfc"])
         self.components["wfc"] = get_dmsim()
         get_dmsim().launch()
 
-        self.update_status_camera("Ready for acquisition")
-
-    def on_simcam_itime_return_pressed(self):
-        texpos = float(self.gridSimCam_itime_entry.text())
-        self.components["wfs"].run("setExposure", texpos)
-
     def on_simcam_array_clicked(self):
         pass
-
-    def on_simcam_xybinning_changed(self):
-        binning = self.gridSimCam_XYbinning_combo.currentIndex()
-        self.log("Resetting shared memories as data size has changed. One moment...", "orange")
-        # Destroy data viewer
-        reset_shms()
-        # Open data viewer window again
-        self.components["wfs"].run("setBinning", binning)
 
     def on_simcam_roi_clicked(self):
         pass
@@ -288,14 +284,17 @@ class MainWindow(QWidget):
     def on_simcam_amplitude_return_pressed(self):
         amplitude = float(self.gridSimCam_Amplitude_entry.text())
         self.components["wfs"].run("setAmplitude", amplitude)
+        self.log("Amplitude " + str(amplitude))
 
     def on_simcam_slope_noise_return_pressed(self):
         slope_noise = float(self.gridSimCam_SlopeNoise_entry.text())
         self.components["wfs"].run("setSlopeNoise", slope_noise)
+        self.log("Slope noise " + str(slope_noise))
 
     def on_simcam_lag_return_pressed(self):
         lag = int(self.gridSimCam_lag_entry.text())
         self.components["wfs"].run("setLag", lag)
+        self.log("Lag " + str(lag))
 
     def reset_wfs_shm_only(self):
         # Pause the WFS camera
@@ -374,7 +373,7 @@ class MainWindow(QWidget):
             cursor.deleteChar()
             cursor.deleteChar()  # removes newline
 
-class HardwareWorker(QThread):
+class HardwareInitWorker(QThread):
 
     # Class to help launch hardware (or perform other hardware-related functions)
     # in a separate thread to prevent the GUI from hanging.
@@ -383,21 +382,25 @@ class HardwareWorker(QThread):
     status_signal = pyqtSignal(str)
     done = pyqtSignal(str)  # pass back name so caller knows which finished
 
-    def __init__(self, name, function, status_message=None, log_message=None, *args, **kwargs):
+    def __init__(self, name, function, status_start=None, log=None, status_end=None,
+                 *args, **kwargs):
         super().__init__()
         self.name = name
         self.function = function
         self.args = args
         self.kwargs = kwargs
-        self.status_message = status_message
-        self.log_message = log_message
+        self.status_start = status_start
+        self.log = log
+        self.status_end = status_end
 
     def run(self):
-        if self.status_message is not None:
-            self.status_signal.emit(self.status_message)
-        if self.log_message is not None:
-            self.log_signal.emit(self.log_message, "blue")
+        if self.status_start is not None:
+            self.status_signal.emit(self.status_start)
+        if self.log is not None:
+            self.log_signal.emit(self.log, "blue")
         result = self.function(*self.args, **self.kwargs)
+        if self.status_end is not None:
+            self.status_signal.emit(self.status_end)
         self.done.emit(self.name)
 
 if __name__ == "__main__":

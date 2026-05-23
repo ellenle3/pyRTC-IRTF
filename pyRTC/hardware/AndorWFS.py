@@ -11,7 +11,7 @@ def pause_acquisition(func):
     @wraps(func)
     def wrapper(self, *args, **kwargs):
         # Do not pause and resume if the acquisition is not running
-        status = self.sdk.GetStatus()
+        ret, status = self.sdk.GetStatus()
         if not status == self.errors.DRV_ACQUIRING:
             result = func(self, *args, **kwargs)
             return result
@@ -74,13 +74,14 @@ class AndorWFS(WavefrontSensor):
         self.oldTotalFrames = 0
 
         return
+
+    def stop(self):
+        super().stop()
+        self.sdk.AbortAcquisition() # abort after stopping
     
-    def pause(self):
-        self.sdk.AbortAcquisition()
-        return
-    
-    def resume(self):
-        self.sdk.StartAcquisition()
+    def start(self):
+        self.sdk.StartAcquisition() # start before exposing
+        super().start()
         return
 
     @pause_acquisition

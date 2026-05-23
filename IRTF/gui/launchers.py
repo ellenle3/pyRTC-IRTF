@@ -24,7 +24,7 @@ def get_imakadm():
     return launcher
 
 def get_dmsim():
-    hardware_class = PYRTC_CLASS_PATH / "hardware" / "DMSim.py"
+    hardware_class = PYRTC_CLASS_PATH / "hardware" / "DMsim.py"
     config = CONFIG_PATH / "hrtc_wfcsim.yaml"
     launcher = check_hardware_and_launch(hardware_class, config, "wfc")
     return launcher

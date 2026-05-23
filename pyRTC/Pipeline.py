@@ -400,7 +400,9 @@ class hardwareLauncher:
 
     def __init__(self, hardwareFile, configFile, port, timeout=None) -> None:
         self.hardwareFile = hardwareFile
-        self.command = ["python", hardwareFile, "-c", f"{configFile}", "-p", f"{port}"]
+        #self.command = ["python", hardwareFile, "-c", f"{configFile}", "-p", f"{port}"]
+        # In case python is aliased to a different version
+        self.command = [sys.executable, hardwareFile, "-c", f"{configFile}", "-p", f"{port}"]
         self.running = False
         # Client configuration
         self.host = '127.0.0.1'  # localhost
@@ -408,7 +410,7 @@ class hardwareLauncher:
         self.timeout = timeout
 
         return
-    
+
     def launch(self):
         if not self.running:
             print(f"Launching Process: {self.hardwareFile}")
