@@ -9,7 +9,7 @@ with open(CONFIG_PATH / "ports.json") as f:
     PORTS = json.load(f)
 
 
-def check_hardware_and_launch(hardware_class, config, port_name):
+def check_config_and_make_launcher(hardware_class, config, port_name):
     # Need to explicilty check these files or the GUI will hang itself
     if not os.path.exists(hardware_class):
         raise FileNotFoundError(f"Hardware class file {hardware_class} not found.")
@@ -20,37 +20,37 @@ def check_hardware_and_launch(hardware_class, config, port_name):
 def get_imakadm():
     hardware_class = PYRTC_CLASS_PATH / "hardware" / "ImakaDM.py"
     config = CONFIG_PATH / "hrtc_wfc.yaml"
-    launcher = check_hardware_and_launch(hardware_class, config, "wfc")
+    launcher = check_config_and_make_launcher(hardware_class, config, "wfc")
     return launcher
 
 def get_dmsim():
     hardware_class = PYRTC_CLASS_PATH / "hardware" / "DMsim.py"
     config = CONFIG_PATH / "hrtc_wfcsim.yaml"
-    launcher = check_hardware_and_launch(hardware_class, config, "wfc")
+    launcher = check_config_and_make_launcher(hardware_class, config, "wfc")
     return launcher
 
 def get_felixsim():
     hardware_class = PYRTC_CLASS_PATH / "hardware" / "FELIXsim.py"
     config = CONFIG_PATH / "hrtc_wfs_felixsim.yaml"
-    launcher = check_hardware_and_launch(hardware_class, config, "wfs")
+    launcher = check_config_and_make_launcher(hardware_class, config, "wfs")
     return launcher
 
 def get_andor():
     hardware_class = PYRTC_CLASS_PATH / "hardware" / "AndorWFS.py"
     config = CONFIG_PATH / "hrtc_wfs_andor.yaml"
-    launcher = check_hardware_and_launch(hardware_class, config, "wfs")
+    launcher = check_config_and_make_launcher(hardware_class, config, "wfs")
     return launcher
 
 def get_slopes():
     hardware_class = PYRTC_CLASS_PATH / "SlopesProcess.py"
     config = CONFIG_PATH / "hrtc_slopes.yaml"
-    launcher = check_hardware_and_launch(hardware_class, config, "wfs")
+    launcher = check_config_and_make_launcher(hardware_class, config, "wfs")
     return launcher
 
 def get_loop():
     hardware_class = PYRTC_CLASS_PATH / "Loop.py"
     config = CONFIG_PATH / "hrtc_loop.yaml"
-    launcher = check_hardware_and_launch(hardware_class, config, "wfs")
+    launcher = check_config_and_make_launcher(hardware_class, config, "wfs")
     return launcher
 
 def try_shutdown(component):

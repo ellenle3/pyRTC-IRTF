@@ -8,9 +8,10 @@ from PyQt6 import uic
 from PyQt6.QtGui import QIntValidator, QDoubleValidator, QColor, QTextCursor, QIcon
 
 from pathlib import Path
-#sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent))
 #from IRTF.gui.pyrtcgui_setup import Ui_pyrtcGUI
-from launchers import *
+from pyrtc_launchers import *
+from gui_subwindows import *
 
 # Get the directory of the current Python file
 BASE_DIR = Path(__file__).parent
@@ -38,19 +39,20 @@ class MainWindow(QWidget):
             "wfc": None,
             "loop": None
         }
-        self.update_status_camera("OFF")
-        self.update_status_ASM("Not initialized.")
-        self.update_status_loop("Not initialized.")
+        self.update_status_camera("Disconnected")
+        self.update_status_ASM("Disconnected")
+        self.update_status_loop("Disconnected")
 
         self._connect_signals()
 
     def eventFilter(self, obj, event):
         # For clicking frame panels typically used for mechanisms
         if event.type() == QEvent.Type.MouseButtonPress:
-            if obj == self.panelMech_Shutter:
-                self.on_shutter_clicked()
-            elif obj == self.panelMech_Cooler:
-                self.on_cooler_clicked()
+            if self.is_IXON_enabled:
+                if obj == self.panelMech_Shutter:
+                    self.on_shutter_clicked()
+                elif obj == self.panelMech_Cooler:
+                    self.on_cooler_clicked()
         return super().eventFilter(obj, event)
     
     def closeEvent(self, event):
@@ -76,9 +78,9 @@ class MainWindow(QWidget):
         self.gridPanelButtons_ShutDown_button.clicked.connect(self.on_shutdown_clicked)
 
         # Changing camera tabs
-        self.tabControls_AO_Camera.currentChanged.connect(self.on_ao_camera_tab_changed)
         self.cam_last_index = self.tabControls_AO_Camera.currentIndex()
-
+        self.tabControls_AO_Camera.currentChanged.connect(self.on_ao_camera_tab_changed)
+        
         # IXON controls
         self.gridIXON_itime_entry.setValidator(QDoubleValidator(0.0, 600.0, 5))  # exposure time between 0 and 600 seconds with 5 decimal places
         self.gridIXON_coadd_entry.setValidator(QIntValidator(1, 1000))
@@ -105,6 +107,8 @@ class MainWindow(QWidget):
         self.gridSimCam_lag_entry.returnPressed.connect(self.on_simcam_lag_return_pressed)
 
         # AO params
+        self.AO_last_index = self.tabLoopParams.currentIndex()
+        self.tabLoopParams.currentChanged.connect(self.on_loop_params_tab_changed)
         self.gridLoop_OpenLoop_button.clicked.connect(self.on_open_loop_clicked)
         self.gridLoop_CloseLoop_button.clicked.connect(self.on_close_loop_clicked)
         self.gridLoop_gain_entry.setValidator(QDoubleValidator(0.0, 1.0, 4))
@@ -116,6 +120,8 @@ class MainWindow(QWidget):
         self.gridLoop_pbgain_entry.returnPressed.connect(self.on_pbgain_return_pressed)
         self.gridLoop_pbsoffgain_entry.returnPressed.connect(self.on_pbsoffgain_return_pressed)
         self.gridLoop_NCPA_button.clicked.connect(self.on_ncpa_clicked)
+        self.gridLoop_imat_button.clicked.connect(self.on_imat_clicked)
+        self.gridLoop_pause_radio.toggled.connect(self.on_pause_radio_toggled)
 
         # Autosave
         self.tabAutosave.currentChanged.connect(self.on_autosave_tab_changed)
@@ -126,6 +132,17 @@ class MainWindow(QWidget):
         # Mechanism panels
         self.panelMech_Shutter.installEventFilter(self)
         self.panelMech_Cooler.installEventFilter(self)
+        # deactivate these panels until we have a camera connected
+        self.is_IXON_enabled = False
+
+        # Setup tab
+        # self.gridComponents_ASM_init_button.clicked.connect(self._init_ASM)
+        # self.gridComponents_ASM_stop_button.clicked.connect(self._stop_ASM)
+        # self.gridComponents_slopes_init_button.clicked.connect(self._init_slopes)
+        # self.gridComponents_slopes_stop_button.clicked.connect(self._stop_slopes)
+        # self.gridComponents_loop_init_button.clicked.connect(self._init_loop)
+        # self.gridComponents_loop_stop_button.clicked.connect(self._stop_loop)
+        self.clear_shms_button.clicked.connect(reset_shms)
 
     # -----------------
     # Top panel buttons
@@ -174,44 +191,42 @@ class MainWindow(QWidget):
 
         # First, turn off cameras if switching away from them
         if self.cam_last_index in [1, 2]:
-            self.update_status_camera("Stopping...")
+            self.update_status_camera("Shutting down")
             # Open the loop
-            if self.components["wfs"] is not None:
-                self.log("Turning off camera. Opening the loop...")
-                self.components["wfs"] = None
+            if self.components["loop"] is not None:
+                self.log("Opening the loop and pausing.")
+                self.components["loop"].run("setGain", 0)
+                self.components["loop"].run("stop")
+                self.update_status_loop("Paused")
+
+            try_shutdown(self.components["wfs"])
+            self.components["wfs"] = None
+            self.update_status_camera("Disconnected")
                 
             if self.cam_last_index == 1:
                 self.log("Andor OFF")
-            if self.cam_last_index == 2:
-                try_shutdown(self.components["wfs"])
+                self.is_IXON_enabled = False
+                
+            else:
                 self.log("SimCam OFF")
                 try_shutdown(self.components["wfc"])
-                self.log("DM simulator OFF")
-            
-            self.update_status_camera("OFF")
-            
+                self.components["wfc"] = None
+                self.log("SimASM OFF")
+                self.update_status_ASM("Disconnected")
+                        
         # Initialize new camera if switching to it
         if index == 1:
-            status_start = "Initializing Andor"
-            log = "Starting Andor camera. Please wait..."
-            status_end = "Ready for acquisition."
-            self.worker = HardwareInitWorker("Andor", self._start_ixon, status_start=status_start,
-                                             log=log, status_end=status_end)
+            self.worker = IXONInitWorker("IXON", self._start_ixon)
             self.worker.log_signal.connect(self.log)
-            self.worker.status_signal.connect(self.update_status_camera)
+            self.worker.status_cam_signal.connect(self.update_status_camera)
             self.worker.done.connect(self._enable_window)  # re-enable window when done
             self._disable_window()
             self.worker.start()
 
         elif index == 2:
-            status_start = "Initializing simulation"
-            log = "Starting SimCam and DM simulator. You will need to re-init the ASM."
-            log += "\n  This can take a few seconds. Please wait..."
-            status_end = "Ready for acquisition."
-            self.worker = HardwareInitWorker("SimCam", self._start_simcam, status_start=status_start,
-                                             log=log, status_end=status_end)
+            self.worker = SimCamInitWorker("SimCam", self.components)
             self.worker.log_signal.connect(self.log)
-            self.worker.status_signal.connect(self.update_status_camera)
+            self.worker.status_cam_signal.connect(self.update_status_camera)
             self.worker.done.connect(self._enable_window)  # re-enable window when done
             self._disable_window()
             self.worker.start()
@@ -284,6 +299,8 @@ class MainWindow(QWidget):
         # self.gridIXON_ReadOut_combo.setCurrentText(default_readout)
         # self.gridIXON_VSS_combo.setCurrentText(default_vss)
 
+        self.is_IXON_enabled = True
+
     def on_ixon_coadd_return_pressed(self):
         coadds = int(self.gridIXON_coadd_entry.text())
         self.components["wfs"].run("setCoadds", coadds)
@@ -311,16 +328,6 @@ class MainWindow(QWidget):
         pass
     
     # SimCam
-    def _start_simcam(self):
-        self.components["wfs"] = get_felixsim()
-        self.components["wfs"].launch()
-        self.components["wfs"].run("stop")  # Start with frames paused
-
-        if self.components["wfc"] is not None:
-            try_shutdown(self.components["wfc"])
-        self.components["wfc"] = get_dmsim()
-        get_dmsim().launch()
-
     def on_simcam_array_clicked(self):
         pass
 
@@ -355,26 +362,90 @@ class MainWindow(QWidget):
     # -----------
     # Loop params
     # -----------
+    def on_loop_params_tab_changed(self, index):
+        # Index 0 = Off, 1 = Basic, 2 = Expert
+
+        # Turn off AO
+        if index == 0:
+            self.update_status_loop("Shutting down")
+            self.log("Opening the loop.")
+            self.components["loop"].run("setGain", 0)
+            try_shutdown(self.components["loop"])
+            self.components["loop"] = None
+            self.log("Loop OFF")
+
+            try_shutdown(self.components["slopes"])
+            self.components["slopes"] = None
+            self.log("Slopes OFF")
+
+            if self.cam_last_index != 2:
+                try_shutdown(self.components["wfc"])
+                self.components["wfc"] = None
+                self.log("ASM OFF")
+                self.update_status_ASM("Disconnected")
+
+            self.update_status_loop("Disconnected")
+                            
+        # Turn on AO if it was off before
+        elif index in [1, 2] and self.AO_last_index == 0:
+            if self.components["wfs"] is None:
+                self.log("Please select a camera before starting the loop.", color="red")
+                self.tabLoopParams.setCurrentIndex(0)  # switch back to Off tab
+                return
+            self.worker = LoopInitWorker("Loop", self.components)
+            self.worker.log_signal.connect(self.log)
+            self.worker.status_ASM_signal.connect(self.update_status_ASM)
+            self.worker.status_loop_signal.connect(self.update_status_loop)
+            self.worker.done.connect(self._enable_window)  # re-enable window when done
+            self._disable_window()
+            self.worker.start()
+
+        self.AO_last_index = index
+
     def on_open_loop_clicked(self):
-        pass
+        self.components["loop"].run("setGain", 0)
+        self.components["loop"].run("leakyGain", 0.99)
+        self.log("open loop")
 
     def on_close_loop_clicked(self):
-        pass
+        self.components["loop"].run("setGain", 0.15)
+        self.components["loop"].run("leakyGain", 1.0)
+        self.log("close loop")
 
     def on_gain_return_pressed(self):
-        pass
-    
+        gain = float(self.gridLoop_gain_entry.text())
+        self.components["loop"].run("setGain", gain)
+        self.log("gain " + str(gain))
+
     def on_leak_return_pressed(self):
-        pass
+        leak = float(self.gridLoop_leak_entry.text())
+        self.components["loop"].run("setattr", "leakyGain", 1-leak)
+        self.log("leak " + str(leak))
 
     def on_pbgain_return_pressed(self):
-        pass
+        pbgain = float(self.gridLoop_pbgain_entry.text())
+        self.components["loop"].run("setattr", "pbgain", pbgain)
+        self.log("pbgain " + str(pbgain))
 
     def on_pbsoffgain_return_pressed(self):
-        pass
+        self.log("pbsoff not implemented yet", "red")
 
     def on_ncpa_clicked(self):
         pass
+
+    def on_imat_clicked(self):
+        pass
+
+    def on_pause_radio_toggled(self, checked):
+        if checked:
+            # In case we want to pause the loop without stopping the camera...
+            self.components["loop"].run("stop")
+            self.log("Loop paused.")
+            self.update_status_loop("Paused")
+        else:
+            self.components["loop"].run("start")
+            self.log("Loop resumed.")
+            self.update_status_loop("Running")
 
     # --------
     # Autosave
@@ -395,10 +466,12 @@ class MainWindow(QWidget):
     # Mechanism panels
     # ----------------
     def on_shutter_clicked(self):
-        print("Shutter panel clicked")
+        window = IXONControlsWindow(components=self.components, start_tab=0, parent=self)
+        window.show()
 
     def on_cooler_clicked(self):
-        print("Cooled panel clicked")
+        window = IXONControlsWindow(components=self.components, start_tab=1, parent=self)
+        window.show()
 
     # -------
     # Console
@@ -419,34 +492,98 @@ class MainWindow(QWidget):
             cursor.deleteChar()
             cursor.deleteChar()  # removes newline
 
-class HardwareInitWorker(QThread):
-
-    # Class to help launch hardware (or perform other hardware-related functions)
-    # in a separate thread to prevent the GUI from hanging.
-
+class IXONInitWorker(QThread):
     log_signal = pyqtSignal(str, str)
-    status_signal = pyqtSignal(str)
+    status_cam_signal = pyqtSignal(str)
     done = pyqtSignal(str)  # pass back name so caller knows which finished
 
-    def __init__(self, name, function, status_start=None, log=None, status_end=None,
-                 *args, **kwargs):
+    def __init__(self, name, init_function, log=None):
         super().__init__()
         self.name = name
-        self.function = function
-        self.args = args
-        self.kwargs = kwargs
-        self.status_start = status_start
+        self.init_function = init_function
         self.log = log
-        self.status_end = status_end
 
     def run(self):
-        if self.status_start is not None:
-            self.status_signal.emit(self.status_start)
-        if self.log is not None:
-            self.log_signal.emit(self.log, "blue")
-        result = self.function(*self.args, **self.kwargs)
-        if self.status_end is not None:
-            self.status_signal.emit(self.status_end)
+        self.status_cam_signal.emit("Initializing IXON")
+        self.log_signal.emit("Connecting to Andor camera...", "blue")
+        self.init_function()
+        self.status_cam_signal.emit("Ready for acquisition.")
+        self.done.emit(self.name)
+
+class SimCamInitWorker(QThread):
+    log_signal = pyqtSignal(str, str)
+    status_cam_signal = pyqtSignal(str)
+    status_ASM_signal = pyqtSignal(str)
+    done = pyqtSignal(str)  # pass back name so caller knows which finished
+
+    def __init__(self, name, components, log=None):
+        super().__init__()
+        self.name = name
+        self.components = components    
+        self.log = log
+
+    def run(self):
+        # Do the simulated camera first
+        self.status_cam_signal.emit("Initializing SimCam")
+        self.log_signal.emit("Connecting to Felix simulator...", "blue")
+        self.components["wfs"] = get_felixsim()
+        self.components["wfs"].launch()
+        self.components["wfs"].run("stop")  # Start with frames paused
+        self.status_cam_signal.emit("Ready for acquisition.")
+
+        # Now do the simulated ASM
+        self.status_ASM_signal.emit("Initializing SimASM")
+        self.log_signal.emit("Connecting to ASM simulator...", "blue")
+        if self.components["wfc"] is not None:
+            self.log_signal.emit("Stopping the ASM. You will need to re-initialize the hardware.", "red")
+            try_shutdown(self.components["wfc"])
+            self.components["wfc"] = None
+        self.components["wfc"] = get_dmsim()
+        get_dmsim().launch()
+        self.status_ASM_signal.emit("SimASM connected.")
+
+        self.done.emit(self.name)
+
+class LoopInitWorker(QThread):
+    # Class to launch DM, slopes, and loop processes.
+    log_signal = pyqtSignal(str, str)
+    status_ASM_signal = pyqtSignal(str)
+    status_loop_signal = pyqtSignal(str)
+    done = pyqtSignal(str)  # pass back name so caller knows which finished
+
+    def __init__(self, name, components):
+        super().__init__()
+        self.name = name
+        self.components = components
+
+    def run(self):
+        # Start the ASM first, but skip if the simulator is running.
+        if self.components["wfc"] is None:
+            self.status_ASM_signal.emit("Initializing IRTF-ASM-1")
+            self.log_signal.emit("Connecting to the ASM. Please wait...", "blue")
+
+            self.components["wfc"] = get_imakadm()
+            self.components["wfc"].launch()
+            self.components["wfc"].run("start")
+            self.status_ASM_signal.emit("IRTF-ASM-1 connected.")        
+
+        # Next is the slopes process, which will calculate the slopes based
+        # on the camera data.
+        self.status_loop_signal.emit("Initializing")
+        self.log_signal.emit("Starting slopes process...", "blue")
+        self.components["slopes"] = get_slopes()
+        self.components["slopes"].launch()
+        self.components["slopes"].run("start")
+
+        # AO loop process has to come last since it needs the shared memories of
+        # the other components.
+        self.log_signal.emit("Starting loop process...", "blue")
+        self.components["loop"] = get_loop()
+        self.components["loop"].launch()
+        self.components["loop"].run("setGain", 0)  # Always start with loop open
+        self.components["loop"].run("start")
+
+        self.status_loop_signal.emit("Running")
         self.done.emit(self.name)
 
 if __name__ == "__main__":

@@ -1150,7 +1150,7 @@ QPushButton:pressed {
            <string notr="true">color: white;</string>
           </property>
           <property name="text">
-           <string/>
+           <string>Disconnected</string>
           </property>
          </widget>
         </item>
@@ -1209,7 +1209,7 @@ QPushButton:pressed {
            <string notr="true">color: white;</string>
           </property>
           <property name="text">
-           <string/>
+           <string>Disconnected</string>
           </property>
          </widget>
         </item>
@@ -1258,7 +1258,7 @@ QPushButton:pressed {
              <string notr="true">color: white;</string>
             </property>
             <property name="text">
-             <string/>
+             <string>Disconnected</string>
             </property>
            </widget>
           </item>
@@ -1367,7 +1367,7 @@ color: white;</string>
 }</string>
      </property>
      <property name="currentIndex">
-      <number>0</number>
+      <number>1</number>
      </property>
      <widget class="QWidget" name="tabControls_AO">
       <attribute name="title">
@@ -1981,10 +1981,17 @@ color: white;</string>
                </item>
               </layout>
              </item>
-             <item row="3" column="0">
+             <item row="2" column="0">
               <widget class="QPushButton" name="gridIXON_ROI_button">
                <property name="text">
                 <string>Setup ROI</string>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="0">
+              <widget class="QPushButton" name="gridIXON_dark_button">
+               <property name="text">
+                <string>Take Dark</string>
                </property>
               </widget>
              </item>
@@ -2087,106 +2094,6 @@ color: white;</string>
              </item>
             </layout>
            </item>
-           <item row="0" column="2">
-            <layout class="QHBoxLayout" name="gridSimCam_Amplitude">
-             <item>
-              <widget class="QLabel" name="gridSimCam_Amplitude_label">
-               <property name="minimumSize">
-                <size>
-                 <width>80</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="maximumSize">
-                <size>
-                 <width>80</width>
-                 <height>20</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>Amplitude</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QLineEdit" name="gridSimCam_Amplitude_entry">
-               <property name="sizePolicy">
-                <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-                 <horstretch>0</horstretch>
-                 <verstretch>0</verstretch>
-                </sizepolicy>
-               </property>
-               <property name="minimumSize">
-                <size>
-                 <width>80</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="maximumSize">
-                <size>
-                 <width>200</width>
-                 <height>20</height>
-                </size>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-           <item row="1" column="0">
-            <spacer name="gridSimCam_hspacer10">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>217</width>
-               <height>20</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-           <item row="1" column="1">
-            <layout class="QHBoxLayout" name="gridSimCam_XYbinning">
-             <item>
-              <widget class="QLabel" name="gridSimCam_XYbinning_label">
-               <property name="minimumSize">
-                <size>
-                 <width>60</width>
-                 <height>20</height>
-                </size>
-               </property>
-               <property name="maximumSize">
-                <size>
-                 <width>80</width>
-                 <height>16777215</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>XY Binning</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QComboBox" name="gridSimCam_XYbinning_combo">
-               <item>
-                <property name="text">
-                 <string>1</string>
-                </property>
-               </item>
-               <item>
-                <property name="text">
-                 <string>2</string>
-                </property>
-               </item>
-               <item>
-                <property name="text">
-                 <string>4</string>
-                </property>
-               </item>
-              </widget>
-             </item>
-            </layout>
-           </item>
            <item row="1" column="2">
             <layout class="QHBoxLayout" name="gridSimCam_SlopeNoise">
              <item>
@@ -2232,25 +2139,50 @@ color: white;</string>
              </item>
             </layout>
            </item>
-           <item row="2" column="0">
-            <widget class="QPushButton" name="gridSimCam_ROI_button">
-             <property name="text">
-              <string>Setup ROI</string>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="1">
-            <spacer name="gridSimCam_hspacer21">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>216</width>
-               <height>20</height>
-              </size>
-             </property>
-            </spacer>
+           <item row="0" column="2">
+            <layout class="QHBoxLayout" name="gridSimCam_Amplitude">
+             <item>
+              <widget class="QLabel" name="gridSimCam_Amplitude_label">
+               <property name="minimumSize">
+                <size>
+                 <width>80</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>80</width>
+                 <height>20</height>
+                </size>
+               </property>
+               <property name="text">
+                <string>Amplitude</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLineEdit" name="gridSimCam_Amplitude_entry">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>80</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>200</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+            </layout>
            </item>
            <item row="2" column="2">
             <layout class="QHBoxLayout" name="gridSimCam_lag">
@@ -2297,6 +2229,75 @@ color: white;</string>
              </item>
             </layout>
            </item>
+           <item row="1" column="1">
+            <layout class="QHBoxLayout" name="gridSimCam_XYbinning">
+             <item>
+              <widget class="QLabel" name="gridSimCam_XYbinning_label">
+               <property name="minimumSize">
+                <size>
+                 <width>60</width>
+                 <height>20</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>80</width>
+                 <height>16777215</height>
+                </size>
+               </property>
+               <property name="text">
+                <string>XY Binning</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QComboBox" name="gridSimCam_XYbinning_combo">
+               <item>
+                <property name="text">
+                 <string>1</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>2</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>4</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item row="2" column="1">
+            <spacer name="gridSimCam_hspacer21">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>216</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item row="1" column="0">
+            <widget class="QPushButton" name="gridSimCam_ROI_button">
+             <property name="text">
+              <string>Setup ROI</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QPushButton" name="gridSimCam_dark_button">
+             <property name="text">
+              <string>Take Dark</string>
+             </property>
+            </widget>
+           </item>
           </layout>
          </widget>
         </widget>
@@ -2306,44 +2307,25 @@ color: white;</string>
          <property name="currentIndex">
           <number>0</number>
          </property>
+         <widget class="QWidget" name="tabLoopParams_OFF">
+          <attribute name="title">
+           <string>Off</string>
+          </attribute>
+          <layout class="QGridLayout" name="gridLayout_5">
+           <item row="0" column="0">
+            <widget class="QLabel" name="tabLoopParams_OFF_label">
+             <property name="text">
+              <string>AO loop is OFF. Set up the ROI before proceeding.</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
          <widget class="QWidget" name="tabLoopParams_Basic">
           <attribute name="title">
            <string>Basic</string>
           </attribute>
           <layout class="QGridLayout" name="gridLayout_2">
-           <item row="0" column="0">
-            <widget class="QPushButton" name="gridLoop_OpenLoop_button">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="minimumSize">
-              <size>
-               <width>130</width>
-               <height>55</height>
-              </size>
-             </property>
-             <property name="maximumSize">
-              <size>
-               <width>130</width>
-               <height>60</height>
-              </size>
-             </property>
-             <property name="font">
-              <font>
-               <family>Arial</family>
-               <italic>false</italic>
-               <bold>false</bold>
-              </font>
-             </property>
-             <property name="text">
-              <string>🛑Stop AO🛑
-(open loop)</string>
-             </property>
-            </widget>
-           </item>
            <item row="0" column="1">
             <widget class="QPushButton" name="gridLoop_CloseLoop_button">
              <property name="sizePolicy">
@@ -2372,8 +2354,41 @@ color: white;</string>
               </font>
              </property>
              <property name="text">
-              <string>🟢Start AO🟢
+              <string>Start AO✅
 (close loop)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="2">
+            <widget class="QPushButton" name="gridLoop_OpenLoop_button">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>130</width>
+               <height>55</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>130</width>
+               <height>60</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <family>Arial</family>
+               <italic>false</italic>
+               <bold>false</bold>
+              </font>
+             </property>
+             <property name="text">
+              <string>Stop AO🛑
+(open loop)</string>
              </property>
             </widget>
            </item>
@@ -2384,6 +2399,57 @@ color: white;</string>
            <string>Expert</string>
           </attribute>
           <layout class="QGridLayout" name="gridLayout">
+           <item row="0" column="2">
+            <layout class="QHBoxLayout" name="gridLoop_NCPA">
+             <property name="leftMargin">
+              <number>12</number>
+             </property>
+             <item>
+              <widget class="QPushButton" name="gridLoop_NCPA_button">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>70</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>70</width>
+                 <height>16777215</height>
+                </size>
+               </property>
+               <property name="text">
+                <string>NCPA</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="gridLoop_NCPA_label">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>150</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="text">
+                <string>None</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
            <item row="0" column="0">
             <layout class="QHBoxLayout" name="gridLoop_gain">
              <item>
@@ -2423,52 +2489,13 @@ color: white;</string>
              </item>
             </layout>
            </item>
-           <item row="0" column="1">
-            <layout class="QHBoxLayout" name="gridLoop_pbgain">
-             <item>
-              <widget class="QLabel" name="gridLoop_pbgain_label">
-               <property name="minimumSize">
-                <size>
-                 <width>80</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="maximumSize">
-                <size>
-                 <width>80</width>
-                 <height>20</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>gain.pb</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QLineEdit" name="gridLoop_pbgain_entry">
-               <property name="minimumSize">
-                <size>
-                 <width>50</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="maximumSize">
-                <size>
-                 <width>80</width>
-                 <height>20</height>
-                </size>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-           <item row="0" column="2">
-            <layout class="QHBoxLayout" name="gridLoop_NCPA">
+           <item row="1" column="2">
+            <layout class="QHBoxLayout" name="gridLoop_imat">
              <property name="leftMargin">
               <number>12</number>
              </property>
              <item>
-              <widget class="QPushButton" name="gridLoop_NCPA_button">
+              <widget class="QPushButton" name="gridLoop_imat_button">
                <property name="sizePolicy">
                 <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
                  <horstretch>0</horstretch>
@@ -2477,17 +2504,23 @@ color: white;</string>
                </property>
                <property name="minimumSize">
                 <size>
-                 <width>0</width>
+                 <width>70</width>
                  <height>0</height>
                 </size>
                </property>
+               <property name="maximumSize">
+                <size>
+                 <width>70</width>
+                 <height>16777215</height>
+                </size>
+               </property>
                <property name="text">
-                <string>NCPA</string>
+                <string>imat</string>
                </property>
               </widget>
              </item>
              <item>
-              <widget class="QLabel" name="gridLoop_NCPA_label">
+              <widget class="QLabel" name="gridLoop_imat_label">
                <property name="sizePolicy">
                 <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
                  <horstretch>0</horstretch>
@@ -2496,7 +2529,7 @@ color: white;</string>
                </property>
                <property name="minimumSize">
                 <size>
-                 <width>90</width>
+                 <width>150</width>
                  <height>0</height>
                 </size>
                </property>
@@ -2506,19 +2539,6 @@ color: white;</string>
               </widget>
              </item>
             </layout>
-           </item>
-           <item row="0" column="3">
-            <spacer name="gridLoop_hspacer04">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>100</width>
-               <height>20</height>
-              </size>
-             </property>
-            </spacer>
            </item>
            <item row="1" column="0">
             <layout class="QHBoxLayout" name="gridLoop_leak">
@@ -2598,18 +2618,51 @@ color: white;</string>
              </item>
             </layout>
            </item>
-           <item row="1" column="2">
-            <spacer name="gridLoop_hspace03">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
+           <item row="0" column="3">
+            <widget class="QRadioButton" name="gridLoop_pause_radio">
+             <property name="text">
+              <string>pause</string>
              </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>189</width>
-               <height>20</height>
-              </size>
-             </property>
-            </spacer>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <layout class="QHBoxLayout" name="gridLoop_pbgain">
+             <item>
+              <widget class="QLabel" name="gridLoop_pbgain_label">
+               <property name="minimumSize">
+                <size>
+                 <width>80</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>80</width>
+                 <height>20</height>
+                </size>
+               </property>
+               <property name="text">
+                <string>gain.pb</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLineEdit" name="gridLoop_pbgain_entry">
+               <property name="minimumSize">
+                <size>
+                 <width>50</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>80</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+            </layout>
            </item>
            <item row="1" column="3">
             <spacer name="gridLoop_hspacer14">
@@ -2634,6 +2687,305 @@ color: white;</string>
       <attribute name="title">
        <string>Setup</string>
       </attribute>
+      <widget class="QPushButton" name="initall_button">
+       <property name="geometry">
+        <rect>
+         <x>50</x>
+         <y>50</y>
+         <width>91</width>
+         <height>41</height>
+        </rect>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>50</width>
+         <height>30</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>16777215</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="font">
+        <font>
+         <family>Arial</family>
+         <pointsize>16</pointsize>
+         <italic>false</italic>
+         <bold>false</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>init all</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="gridComponents_ASM_init_button">
+       <property name="geometry">
+        <rect>
+         <x>160</x>
+         <y>140</y>
+         <width>100</width>
+         <height>32</height>
+        </rect>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>100</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>100</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>init ASM</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="gridComponents_loop_init_button">
+       <property name="geometry">
+        <rect>
+         <x>156</x>
+         <y>250</y>
+         <width>100</width>
+         <height>32</height>
+        </rect>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>100</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>100</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>init loop</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="gridComponents_slopes_init_button">
+       <property name="geometry">
+        <rect>
+         <x>156</x>
+         <y>210</y>
+         <width>100</width>
+         <height>32</height>
+        </rect>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>100</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>100</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>init slopes</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="gridComponents_ASM_stop_button">
+       <property name="geometry">
+        <rect>
+         <x>274</x>
+         <y>140</y>
+         <width>100</width>
+         <height>32</height>
+        </rect>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>100</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>100</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>stop ASM</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="clear_shms_button">
+       <property name="geometry">
+        <rect>
+         <x>420</x>
+         <y>140</y>
+         <width>100</width>
+         <height>32</height>
+        </rect>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">color: white;
+background-color: darkred;</string>
+       </property>
+       <property name="text">
+        <string>clear SHMs</string>
+       </property>
+      </widget>
+      <widget class="QWidget" name="">
+       <property name="geometry">
+        <rect>
+         <x>60</x>
+         <y>320</y>
+         <width>257</width>
+         <height>58</height>
+        </rect>
+       </property>
+       <layout class="QVBoxLayout" name="verticalLayout">
+        <item>
+         <layout class="QHBoxLayout" name="gridConfig_minDarkItime">
+          <item>
+           <widget class="QLabel" name="gridConfig_minDarkItime_label">
+            <property name="minimumSize">
+             <size>
+              <width>120</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>min dark itime (ms)</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="gridConfig_minDarkItime_entry">
+            <property name="text">
+             <string>1000</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="gridConfig_minDarkFrames">
+          <item>
+           <widget class="QLabel" name="gridConfig_minDarkFrames_label">
+            <property name="minimumSize">
+             <size>
+              <width>120</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>min dark frames</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="gridConfig_minDarkFrames_entry">
+            <property name="text">
+             <string>3</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QPushButton" name="gridComponents_loop_stop_button">
+       <property name="geometry">
+        <rect>
+         <x>270</x>
+         <y>250</y>
+         <width>100</width>
+         <height>32</height>
+        </rect>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>100</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>100</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>stop loop</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="gridComponents_slopes_stop_button">
+       <property name="geometry">
+        <rect>
+         <x>270</x>
+         <y>210</y>
+         <width>100</width>
+         <height>32</height>
+        </rect>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>100</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>100</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>stop slopes</string>
+       </property>
+      </widget>
+      <widget class="QWidget" name="">
+       <property name="geometry">
+        <rect>
+         <x>60</x>
+         <y>390</y>
+         <width>348</width>
+         <height>33</height>
+        </rect>
+       </property>
+       <layout class="QHBoxLayout" name="girdComponents_NCPALookup">
+        <item>
+         <widget class="QLabel" name="girdComponents_NCPALookup_label">
+          <property name="minimumSize">
+           <size>
+            <width>120</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>NCPA lookup table</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="girdComponents_NCPALookup_fname">
+          <property name="text">
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="girdComponents_NCPALookup_browse">
+          <property name="text">
+           <string>Browse...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
      </widget>
      <widget class="QWidget" name="tabControls_Macro">
       <attribute name="title">
