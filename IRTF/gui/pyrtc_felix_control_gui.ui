@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>803</width>
-    <height>959</height>
+    <height>973</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -1367,7 +1367,7 @@ color: white;</string>
 }</string>
      </property>
      <property name="currentIndex">
-      <number>1</number>
+      <number>0</number>
      </property>
      <widget class="QWidget" name="tabControls_AO">
       <attribute name="title">
@@ -1395,7 +1395,7 @@ color: white;</string>
           <property name="verticalSpacing">
            <number>4</number>
           </property>
-          <item row="0" column="1">
+          <item row="0" column="2">
            <widget class="QTabWidget" name="tabAutosave">
             <property name="styleSheet">
              <string notr="true"/>
@@ -1418,6 +1418,16 @@ color: white;</string>
                <widget class="QLabel" name="tabAutosave_Off_label">
                 <property name="text">
                  <string>Autosave is Off. AO telemetry is not saved.</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="tabAutosave_Off_label_warn">
+                <property name="styleSheet">
+                 <string notr="true">color: red;</string>
+                </property>
+                <property name="text">
+                 <string>WARNING: Turning on autosave may produce a large amount of data!</string>
                 </property>
                </widget>
               </item>
@@ -1611,10 +1621,22 @@ color: white;</string>
           </item>
           <item row="0" column="0">
            <widget class="QLabel" name="tabControls_AO_Autosave_label">
+            <property name="maximumSize">
+             <size>
+              <width>75</width>
+              <height>16777215</height>
+             </size>
+            </property>
             <property name="text">
-             <string>Autosave</string>
+             <string>Save Telemetry</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
             </property>
            </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QWidget" name="widget" native="true"/>
           </item>
          </layout>
         </widget>
@@ -2691,8 +2713,8 @@ color: white;</string>
        <property name="geometry">
         <rect>
          <x>50</x>
-         <y>50</y>
-         <width>91</width>
+         <y>80</y>
+         <width>111</width>
          <height>41</height>
         </rect>
        </property>
@@ -2717,7 +2739,7 @@ color: white;</string>
         </font>
        </property>
        <property name="text">
-        <string>init all</string>
+        <string>reconnect all</string>
        </property>
       </widget>
       <widget class="QPushButton" name="gridComponents_ASM_init_button">
@@ -2820,13 +2842,13 @@ color: white;</string>
         <string>stop ASM</string>
        </property>
       </widget>
-      <widget class="QPushButton" name="clear_shms_button">
+      <widget class="QPushButton" name="kill_button">
        <property name="geometry">
         <rect>
-         <x>420</x>
-         <y>140</y>
-         <width>100</width>
-         <height>32</height>
+         <x>440</x>
+         <y>80</y>
+         <width>101</width>
+         <height>51</height>
         </rect>
        </property>
        <property name="styleSheet">
@@ -2834,10 +2856,11 @@ color: white;</string>
 background-color: darkred;</string>
        </property>
        <property name="text">
-        <string>clear SHMs</string>
+        <string>reconnect
+and kill all</string>
        </property>
       </widget>
-      <widget class="QWidget" name="">
+      <widget class="QWidget" name="layoutWidget">
        <property name="geometry">
         <rect>
          <x>60</x>
@@ -2947,7 +2970,7 @@ background-color: darkred;</string>
         <string>stop slopes</string>
        </property>
       </widget>
-      <widget class="QWidget" name="">
+      <widget class="QWidget" name="layoutWidget">
        <property name="geometry">
         <rect>
          <x>60</x>
@@ -3246,8 +3269,8 @@ background-color: darkred;</string>
          </item>
          <item row="1" column="0">
           <layout class="QGridLayout" name="gridEmpty1">
-           <item row="0" column="0">
-            <widget class="QLabel" name="gridEmpty1_row0_label">
+           <item row="2" column="0">
+            <widget class="QLabel" name="gridEmpty1_row2_label">
              <property name="font">
               <font>
                <family>Arial</family>
@@ -3264,26 +3287,8 @@ background-color: darkred;</string>
              </property>
             </widget>
            </item>
-           <item row="0" column="1">
-            <widget class="QLabel" name="gridEmpty1_row0_data">
-             <property name="font">
-              <font>
-               <family>Arial</family>
-               <pointsize>11</pointsize>
-               <italic>false</italic>
-               <bold>false</bold>
-              </font>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: white;</string>
-             </property>
-             <property name="text">
-              <string/>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="0">
-            <widget class="QLabel" name="gridEmpty1_row1_label">
+           <item row="2" column="1">
+            <widget class="QLabel" name="gridEmpty1_row2_data">
              <property name="font">
               <font>
                <family>Arial</family>
@@ -3318,8 +3323,8 @@ background-color: darkred;</string>
              </property>
             </widget>
            </item>
-           <item row="2" column="0">
-            <widget class="QLabel" name="gridEmpty1_row2_label">
+           <item row="1" column="0">
+            <widget class="QLabel" name="gridEmpty1_row1_label">
              <property name="font">
               <font>
                <family>Arial</family>
@@ -3336,8 +3341,26 @@ background-color: darkred;</string>
              </property>
             </widget>
            </item>
-           <item row="2" column="1">
-            <widget class="QLabel" name="gridEmpty1_row2_data">
+           <item row="0" column="0">
+            <widget class="QLabel" name="gridEmpty1_row0_label">
+             <property name="font">
+              <font>
+               <family>Arial</family>
+               <pointsize>11</pointsize>
+               <italic>false</italic>
+               <bold>false</bold>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: white;</string>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QLabel" name="gridEmpty1_row0_data">
              <property name="font">
               <font>
                <family>Arial</family>
@@ -3787,7 +3810,7 @@ color: white;</string>
               <string notr="true">color: white;</string>
              </property>
              <property name="text">
-              <string>closed</string>
+              <string/>
              </property>
             </widget>
            </item>
@@ -3957,7 +3980,7 @@ color: white;</string>
               <string notr="true">color: white;</string>
              </property>
              <property name="text">
-              <string>On</string>
+              <string/>
              </property>
             </widget>
            </item>
@@ -3993,7 +4016,7 @@ color: white;</string>
               <string notr="true">color: white;</string>
              </property>
              <property name="text">
-              <string>0</string>
+              <string/>
              </property>
             </widget>
            </item>
@@ -4029,7 +4052,7 @@ color: white;</string>
               <string notr="true">color: white;</string>
              </property>
              <property name="text">
-              <string>-65</string>
+              <string/>
              </property>
             </widget>
            </item>

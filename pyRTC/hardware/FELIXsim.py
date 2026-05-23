@@ -20,6 +20,8 @@ class FELIXSimulator(WavefrontSensor):
 
     def __init__(self, conf):
         super().__init__(conf)
+        self.simInjectedSlopes, self.slopesShape, self.slopesDType = initExistingShm("simInjectedSlopes",
+                                                                                     gpuDevice=self.gpuDevice)
         
         self.downsampledImage = None
         if "bitDepth" in conf:
@@ -52,19 +54,12 @@ class FELIXSimulator(WavefrontSensor):
         self._pause_event = threading.Event()
         self._pause_event.set()  # Start in unpaused state
 
-        self.injectedSlopes = np.zeros_like(self.calpts)
-
         self.offsets = np.random.uniform(-self.slopeNoise, self.slopeNoise, (4,2))
         self.iter = 0
         return
-    
-    def updateInjectedSlopes(self, slopes):
-        """Updates slope correction by the DM.
-        """
-        self.injectedSlopes = slopes
-        return
-    
+        
     def make_felix_data(self):
+        injectedSlopes = self.simInjectedSlopes.read_noblock()
 
         a = self.amplitude
 
@@ -77,10 +72,10 @@ class FELIXSimulator(WavefrontSensor):
             # New random offsets every lag iterations
             self.offsets = np.random.uniform(-self.slopeNoise, self.slopeNoise, (4,2))
 
-        pt1 = self.calpts[0] + self.offsets[0] + self.injectedSlopes[0]
-        pt2 = self.calpts[1] + self.offsets[1] + self.injectedSlopes[1]
-        pt3 = self.calpts[2] + self.offsets[2] + self.injectedSlopes[2]
-        pt4 = self.calpts[3] + self.offsets[3] + self.injectedSlopes[3]
+        pt1 = self.calpts[0] + self.offsets[0] + injectedSlopes[0]
+        pt2 = self.calpts[1] + self.offsets[1] + injectedSlopes[1]
+        pt3 = self.calpts[2] + self.offsets[2] + injectedSlopes[2]
+        pt4 = self.calpts[3] + self.offsets[3] + injectedSlopes[3]
 
         bias = self.bias
         detectorNoise = self.detectorNoise

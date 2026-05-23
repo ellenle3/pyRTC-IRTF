@@ -21,6 +21,8 @@ class IRTFASMSimulator(WavefrontCorrector):
     def __init__(self, conf) -> None:
         #Initialize the pyRTC super class
         super().__init__(conf)
+        self.simInjectedSlopes = ImageSHM("simInjectedSlopes", (4,2), np.float64, gpuDevice=self.gpuDevice, consumer=False)
+        self.simInjectedSlopes.write(np.zeros((4,2)))
 
         self.numActuators = conf["numActuators"]
         self.CAP = conf["commandCap"]  # Maximum command amplitude
@@ -37,17 +39,15 @@ class IRTFASMSimulator(WavefrontCorrector):
             self.deactivateActuators(floatActuatorInds)
 
         #flatten the mirror
-        #self.flatten()
+        self.flatten()
 
-        # if not isinstance(wfs, FELIXSimulator):
-        #     raise ValueError("IRTFASMSimulator requires a FELIXSimulator WFS instance.")
-        # self.wfs = wfs
         return
 
     def loadIM(self, file = ''):
         if file == '':
             file = self.imatFile
         self.IM = np.load(file)
+        return
     
     def sendToHardware(self):
         #Do all of the normal updating of the super class
@@ -61,7 +61,7 @@ class IRTFASMSimulator(WavefrontCorrector):
         xslopes = slopes[:4]
         yslopes = slopes[4:]
         slopes = np.vstack((xslopes, yslopes)).T
-        #self.wfs.updateInjectedSlopes(slopes)
+        self.simInjectedSlopes.write(slopes)
         return
 
     def __del__(self):

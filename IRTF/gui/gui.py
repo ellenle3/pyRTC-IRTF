@@ -37,7 +37,8 @@ class MainWindow(QWidget):
             "wfs": None,
             "slopes": None,
             "wfc": None,
-            "loop": None
+            "loop": None,
+            "tel": None # telemetry
         }
         self.update_status_camera("Disconnected")
         self.update_status_ASM("Disconnected")
@@ -142,7 +143,7 @@ class MainWindow(QWidget):
         # self.gridComponents_slopes_stop_button.clicked.connect(self._stop_slopes)
         # self.gridComponents_loop_init_button.clicked.connect(self._init_loop)
         # self.gridComponents_loop_stop_button.clicked.connect(self._stop_loop)
-        self.clear_shms_button.clicked.connect(reset_shms)
+        self.kill_button.clicked.connect(shutdown_all)
 
     # -----------------
     # Top panel buttons
@@ -227,6 +228,7 @@ class MainWindow(QWidget):
             self.worker = SimCamInitWorker("SimCam", self.components)
             self.worker.log_signal.connect(self.log)
             self.worker.status_cam_signal.connect(self.update_status_camera)
+            self.worker.status_ASM_signal.connect(self.update_status_ASM)
             self.worker.done.connect(self._enable_window)  # re-enable window when done
             self._disable_window()
             self.worker.start()
@@ -368,21 +370,40 @@ class MainWindow(QWidget):
         # Turn off AO
         if index == 0:
             self.update_status_loop("Shutting down")
-            self.log("Opening the loop.")
-            self.components["loop"].run("setGain", 0)
-            try_shutdown(self.components["loop"])
-            self.components["loop"] = None
-            self.log("Loop OFF")
 
-            try_shutdown(self.components["slopes"])
-            self.components["slopes"] = None
-            self.log("Slopes OFF")
+            if self.components["loop"] is not None:
+                self.log("Opening the loop")
+                self.components["loop"].run("setGain", 0)
+                try_shutdown(self.components["loop"])
+                self.components["loop"] = None
+                self.log("Loop OFF")
+            else:
+                self.log("Loop is already disconnected?", "red")
 
-            if self.cam_last_index != 2:
-                try_shutdown(self.components["wfc"])
-                self.components["wfc"] = None
-                self.log("ASM OFF")
-                self.update_status_ASM("Disconnected")
+            if self.components["slopes"] is not None:
+                try_shutdown(self.components["slopes"])
+                self.components["slopes"] = None
+                self.log("Slopes OFF")
+            else:
+                self.log("Slopes is already disconnected?", "red")
+
+            if self.cam_last_index != 2:  # check if not simulator
+                if self.components["wfs"] is not None:
+                    self.log("Flattening the ASM.")
+                    self.components["wfc"].run("flatten")
+                    try_shutdown(self.components["wfc"])
+                    self.components["wfc"] = None
+                    self.log("ASM OFF")
+                    self.update_status_ASM("Disconnected")
+                else:
+                    self.log("ASM is already disconnected?", "red")
+
+            if self.components["tel"] is not None:
+                try_shutdown(self.components["tel"])
+                self.components["tel"] = None
+                self.log("Telemetry stream OFF")
+            else:
+                self.log("Telemetry is already disconnected?", "red")
 
             self.update_status_loop("Disconnected")
                             
@@ -419,12 +440,12 @@ class MainWindow(QWidget):
 
     def on_leak_return_pressed(self):
         leak = float(self.gridLoop_leak_entry.text())
-        self.components["loop"].run("setattr", "leakyGain", 1-leak)
+        self.components["loop"].setProperty("leakyGain", 1-leak)
         self.log("leak " + str(leak))
 
     def on_pbgain_return_pressed(self):
         pbgain = float(self.gridLoop_pbgain_entry.text())
-        self.components["loop"].run("setattr", "pbgain", pbgain)
+        self.components["loop"].setProperty("pbgain", pbgain)
         self.log("pbgain " + str(pbgain))
 
     def on_pbsoffgain_return_pressed(self):
@@ -451,6 +472,12 @@ class MainWindow(QWidget):
     # Autosave
     # --------
     def on_autosave_tab_changed(self, index):
+        if index == 1:
+            if self.components["tel"] is None:
+                self.log("Telemetry stream is not running. Please start the loop first.", "red")
+                self.tabAutosave.setCurrentIndex(0)  # switch back to Off tab
+                return
+
         self.log(f"Autosave {'ON' if index == 1 else 'OFF'}")
 
     def on_autosave_path_return_pressed(self):
@@ -492,6 +519,7 @@ class MainWindow(QWidget):
             cursor.deleteChar()
             cursor.deleteChar()  # removes newline
 
+
 class IXONInitWorker(QThread):
     log_signal = pyqtSignal(str, str)
     status_cam_signal = pyqtSignal(str)
@@ -507,7 +535,7 @@ class IXONInitWorker(QThread):
         self.status_cam_signal.emit("Initializing IXON")
         self.log_signal.emit("Connecting to Andor camera...", "blue")
         self.init_function()
-        self.status_cam_signal.emit("Ready for acquisition.")
+        self.status_cam_signal.emit("Ready for acquisition")
         self.done.emit(self.name)
 
 class SimCamInitWorker(QThread):
@@ -523,15 +551,8 @@ class SimCamInitWorker(QThread):
         self.log = log
 
     def run(self):
-        # Do the simulated camera first
-        self.status_cam_signal.emit("Initializing SimCam")
-        self.log_signal.emit("Connecting to Felix simulator...", "blue")
-        self.components["wfs"] = get_felixsim()
-        self.components["wfs"].launch()
-        self.components["wfs"].run("stop")  # Start with frames paused
-        self.status_cam_signal.emit("Ready for acquisition.")
-
-        # Now do the simulated ASM
+        # Simulated ASM first since SimCam depends on ASM slope shared memory to
+        # inject a fake signal into the simulator.
         self.status_ASM_signal.emit("Initializing SimASM")
         self.log_signal.emit("Connecting to ASM simulator...", "blue")
         if self.components["wfc"] is not None:
@@ -540,7 +561,15 @@ class SimCamInitWorker(QThread):
             self.components["wfc"] = None
         self.components["wfc"] = get_dmsim()
         get_dmsim().launch()
-        self.status_ASM_signal.emit("SimASM connected.")
+        self.status_ASM_signal.emit("SimASM connected")
+        
+        # SimCam (simulated Felix)
+        self.status_cam_signal.emit("Initializing SimCam")
+        self.log_signal.emit("Connecting to Felix simulator...", "blue")
+        self.components["wfs"] = get_felixsim()
+        self.components["wfs"].launch()
+        self.components["wfs"].run("stop")  # Start with frames paused
+        self.status_cam_signal.emit("Ready for acquisition")
 
         self.done.emit(self.name)
 
@@ -562,10 +591,13 @@ class LoopInitWorker(QThread):
             self.status_ASM_signal.emit("Initializing IRTF-ASM-1")
             self.log_signal.emit("Connecting to the ASM. Please wait...", "blue")
 
+            print("   getting launcher")
             self.components["wfc"] = get_imakadm()
+            print("   got launcher. launching now")
             self.components["wfc"].launch()
+            print("   launched. starting now")
             self.components["wfc"].run("start")
-            self.status_ASM_signal.emit("IRTF-ASM-1 connected.")        
+            self.status_ASM_signal.emit("IRTF-ASM-1 connected")        
 
         # Next is the slopes process, which will calculate the slopes based
         # on the camera data.
@@ -575,13 +607,18 @@ class LoopInitWorker(QThread):
         self.components["slopes"].launch()
         self.components["slopes"].run("start")
 
-        # AO loop process has to come last since it needs the shared memories of
+        # AO loop process comes at the end since it needs the shared memories of
         # the other components.
         self.log_signal.emit("Starting loop process...", "blue")
         self.components["loop"] = get_loop()
         self.components["loop"].launch()
         self.components["loop"].run("setGain", 0)  # Always start with loop open
         self.components["loop"].run("start")
+
+        # Also plug in the telemetry stream
+        self.components["tel"] = get_imakatel()
+        self.components["tel"].launch()
+        self.components["tel"].run("start")
 
         self.status_loop_signal.emit("Running")
         self.done.emit(self.name)

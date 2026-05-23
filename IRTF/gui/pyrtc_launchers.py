@@ -44,13 +44,19 @@ def get_andor():
 def get_slopes():
     hardware_class = PYRTC_CLASS_PATH / "SlopesProcess.py"
     config = CONFIG_PATH / "hrtc_slopes.yaml"
-    launcher = check_config_and_make_launcher(hardware_class, config, "wfs")
+    launcher = check_config_and_make_launcher(hardware_class, config, "slopes")
     return launcher
 
 def get_loop():
     hardware_class = PYRTC_CLASS_PATH / "Loop.py"
     config = CONFIG_PATH / "hrtc_loop.yaml"
-    launcher = check_config_and_make_launcher(hardware_class, config, "wfs")
+    launcher = check_config_and_make_launcher(hardware_class, config, "loop")
+    return launcher
+
+def get_imakatel():
+    hardware_class = PYRTC_CLASS_PATH / "ImakaTelemetry.py"
+    config = CONFIG_PATH / "hrtc_tel.yaml"
+    launcher = check_config_and_make_launcher(hardware_class, config, "tel")
     return launcher
 
 def try_shutdown(component):
@@ -63,14 +69,15 @@ def try_shutdown(component):
         print(f"Component {component} cannot be shut down.")
 
 def shutdown_all():
-    components = [get_imakadm(), get_slopes(), get_loop(), get_felixsim(), get_andor()]
+    components = [get_imakatel(), get_loop(), get_slopes(), get_imakadm(), get_andor(),
+                  get_dmsim(), get_felixsim()]
     for comp in components:
         try_shutdown(comp)
 
 def reset_shms():
     shm_names = ["wfs", "wfsRaw", "wfc", "wfc2D", "wfcShape", "signal", "signal2D"
                  "psfShort", "psfLong", "wfsInfo", "loop", "refSlopes", "subApMasks",
-                 "cmat", "m2c"] #list of SHMs to reset
+                 "cmat", "m2c", "simInjectedSlopes"] #list of SHMs to reset
     clear_shms(shm_names)
 
 def reset_wfs_shm(wfs, loop, slopes):

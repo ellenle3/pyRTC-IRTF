@@ -151,7 +151,7 @@ modulator:
   autoZero: True 
   affinity: 7
 
-telemetry:
+tel:
   name: imakatel
   dataDir: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/data/"
   prefix: "aocb"

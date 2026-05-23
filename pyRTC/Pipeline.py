@@ -414,7 +414,8 @@ class hardwareLauncher:
     def launch(self):
         if not self.running:
             print(f"Launching Process: {self.hardwareFile}")
-            self.process = Popen(self.command,stdin=PIPE,stdout=PIPE, text=True, bufsize=1)
+            #self.process = Popen(self.command,stdin=PIPE,stdout=PIPE, text=True, bufsize=1)
+            self.process = Popen(self.command,stdout=PIPE, text=True, bufsize=1) # remove stdin=PIPE to avoid hanging if process is forcefully stoppe
             self.running = True
 
             # Create a socket object

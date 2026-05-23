@@ -17,7 +17,7 @@ class ImakaTelemetry(pyRTCComponent):
     def __init__(self, conf, n_channels=64) -> None:
 
         super().__init__(conf)
-
+        self.name = conf["name"]
         self.dataDir = setFromConfig(conf, "dataDir", "./data/")
         self.prefix = setFromConfig(conf, "prefix", "aocb")
         self.overwrite = setFromConfig(conf, "overwrite", True)
@@ -149,7 +149,7 @@ class ImakaTelemetry(pyRTCComponent):
         wfsShm, wfsDims, wfsDtype = initExistingShm("wfs")
         wfsRaw, wfsRawDims, wfsRawDtype = initExistingShm("wfsRaw")
         signalShm, signalDims, signalDtype = initExistingShm("signal")
-        wfc2DShm, wfc2DDims, wfc2DDtype = initExistingShm("wfc2D")
+        wfc2DShm, wfc2DDims, wfc2DDtype = initExistingShm("wfc2D")  # need 2D SHM to get raw commands
         m2cShm, m2cDims, m2cDtype = initExistingShm("m2c")
         loopShm, loopDims, loopDtype = initExistingShm("loop")
         cmatShm, cmatDims, cmatDtype = initExistingShm("cmat")
@@ -209,3 +209,8 @@ class ImakaTelemetry(pyRTCComponent):
         self.avgCommands = []
         self.wfsImages = []
         self.wfsImagesRaw = []
+
+
+if __name__ == "__main__":
+
+    launchComponent(ImakaTelemetry, "tel", start = True)
