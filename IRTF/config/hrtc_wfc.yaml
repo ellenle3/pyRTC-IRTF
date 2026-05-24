@@ -13,7 +13,7 @@ wfc:
   m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.empirical_norm.20250408b.7modes.npy"
   #m2cFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/z2a.empirical_norm.20250408b.npy"  floatingInfluenceRadius: 1
   affinity: 1
-  commandCap: 1
+  commandCap: 0.3
   hardwareDelay: 0.005 #seconds
   # gpuDevice: 0
   frameDelay: 0

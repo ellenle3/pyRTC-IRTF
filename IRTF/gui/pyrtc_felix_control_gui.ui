@@ -1367,7 +1367,7 @@ color: white;</string>
 }</string>
      </property>
      <property name="currentIndex">
-      <number>0</number>
+      <number>1</number>
      </property>
      <widget class="QWidget" name="tabControls_AO">
       <attribute name="title">
@@ -3008,6 +3008,19 @@ and kill all</string>
          </widget>
         </item>
        </layout>
+      </widget>
+      <widget class="QRadioButton" name="radioButton">
+       <property name="geometry">
+        <rect>
+         <x>460</x>
+         <y>400</y>
+         <width>141</width>
+         <height>20</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Shut down on close</string>
+       </property>
       </widget>
      </widget>
      <widget class="QWidget" name="tabControls_Macro">

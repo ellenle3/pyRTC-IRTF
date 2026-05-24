@@ -148,9 +148,10 @@ class ImakaDM(WavefrontCorrector):
         return
 
     def __del__(self):
+        # self.currentShape = np.zeros(self.numActuators)
+        # self.sendToHardware()
+        self.flatten()
         super().__del__()
-        self.currentShape = np.zeros(self.numActuators)
-        self.sendToHardware()
         return
     
 
