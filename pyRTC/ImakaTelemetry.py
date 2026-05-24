@@ -5,6 +5,7 @@ from pyRTC.Pipeline import ImageSHM, work
 from pyRTC.utils import *
 from pyRTC.pyRTCComponent import *
 import os
+import threading
 import numpy as np
 import matplotlib.pyplot as plt
 from numba import jit
@@ -22,6 +23,8 @@ class ImakaTelemetry(pyRTCComponent):
         self.prefix = setFromConfig(conf, "prefix", "aocb")
         self.overwrite = setFromConfig(conf, "overwrite", True)
         self.numIter = setFromConfig(conf, "numIter", 1000)
+
+        self._cancel_recording = threading.Event() # In case we need to kill a shared memory
 
         self.mostRecentFile = ''
         self.allFiles = []
@@ -41,6 +44,11 @@ class ImakaTelemetry(pyRTCComponent):
         # Number of voltage channels for DM
         self.n_channels = n_channels
         return
+
+    def cancelRecording(self):
+        """Call from outside to forcefully stop recording telemetry."""
+        self._cancel_recording.set()
+    
     
     def setNumIter(self, numIter):
         """Sets number of loop iterations to collect.
@@ -141,10 +149,8 @@ class ImakaTelemetry(pyRTCComponent):
         not all parameters may update every iteration, it uses non-blocking reads
         except for the loop parameters, which will update every time the loop
         counter needs to be incremented.
-
-        Parameters:
-        niter (int): Number of iterations to record.
         """
+        self._cancel_recording.clear()  # reset before starting
 
         wfsShm, wfsDims, wfsDtype = initExistingShm("wfs")
         wfsRaw, wfsRawDims, wfsRawDtype = initExistingShm("wfsRaw")
@@ -160,6 +166,11 @@ class ImakaTelemetry(pyRTCComponent):
         cumulativeCommands = np.zeros((2, self.n_channels), dtype='f4')
 
         for i in range(self.numIter):
+
+            if self._cancel_recording.is_set():
+                print("ImakaTelemetry recording cancelled. Stopping collection and throwing out data.")
+                self.clearData()
+                return
             
             # block here because it will update with each loop iteration
             self.loopParams.append( loopShm.read() )

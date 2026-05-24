@@ -70,7 +70,7 @@ def main():
 
     hdu_mask = fits.PrimaryHDU(masks.astype('>i8'))
     hdu_offsets = fits.ImageHDU(np.zeros(2, dtype='>i8'), name="OFFSETS")
-    hdul = fits.HDUList([hdu_mask, hdu_offsets])
+    hdul = fits.HDUList([hdu_mask, hdu_offsets]) # offsets are needed for the slope calculations
     hdul.writeto(filename, overwrite=True)
     
     print(f"Saved masks to {os.path.abspath(filename)}")

@@ -157,12 +157,13 @@ class AndorWFS(WavefrontSensor):
         print(f"Using VSSpeed index {vi}: {vsspeed:.2f} µs")
     @pause_acquisition
     def setRoi(self, roi):
+        oldroi = [self.roiWidth, self.roiHeight, self.roiLeft, self.roiTop]
         super().setRoi(roi)
  
         if not hasattr(self, "binning"):
             super().setBinning(1)
         
-        self.sdk.SetImage(
+        ret = self.sdk.SetImage(
             hbin   = self.binning,
             vbin   = self.binning,
             hstart = self.roiLeft,
@@ -170,6 +171,10 @@ class AndorWFS(WavefrontSensor):
             vstart = self.roiTop,
             vend   = self.roiTop + self.roiHeight - 1
         )
+        if ret != self.errors.DRV_SUCCESS:
+            print(f"Error setting ROI: {self.errors.get_error_string(ret)}")\
+            super().setRoi(oldroi)
+            return
 
         # Update number of pixels
         self.size = int( self.roiWidth * self.roiHeight / (self.binning * self.binning) )

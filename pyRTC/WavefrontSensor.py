@@ -164,6 +164,19 @@ class WavefrontSensor(pyRTCComponent):
         self.downsampleFactor = setFromConfig(conf, "downsampleFactor", 0)
         self.binning = setFromConfig(conf, "binning", 1)
 
+        self.initWFSMemory()
+        
+        # param 1 is difference from previous timestamp
+        # param 2 is absolute time
+        self.wfsInfo = ImageSHM("wfsInfo", (2,), 'i8', gpuDevice = self.gpuDevice, consumer=False)
+        self.oldTimestamp = get_time_usec()
+        self.wfsInfo.write(np.array([0, self.oldTimestamp], dtype='i8'))
+        self.loadDark()
+
+        return
+    
+    def initWFSMemory(self):
+        # Separated out here in case we need to re-init it if ROI changed.
         self.imageRawShape = [self.width // self.binning, self.height // self.binning]
         self.imageRawDType = np.uint16
         self.imageDType = np.int32
@@ -177,15 +190,6 @@ class WavefrontSensor(pyRTCComponent):
         self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
         self.dark = np.zeros(self.imageRawShape, dtype=self.imageDType)
 
-        # param 1 is difference from previous timestamp
-        # param 2 is absolute time
-        self.wfsInfo = ImageSHM("wfsInfo", (2,), 'i8', gpuDevice = self.gpuDevice, consumer=False)
-        self.oldTimestamp = get_time_usec()
-        self.wfsInfo.write(np.array([0, self.oldTimestamp], dtype='i8'))
-        self.loadDark()
-
-        return
-    
     def setRoi(self, roi):
         """
         Sets the region of interest (ROI) for the sensor.
@@ -200,6 +204,8 @@ class WavefrontSensor(pyRTCComponent):
         self.roiLeft = roi[2]
         self.roiTop = roi[3]
 
+        self.width = self.roiWidth // self.binning
+        self.height = self.roiHeight // self.binning
         return
 
     def setExposure(self, exposure: float) -> None:
@@ -353,7 +359,11 @@ class WavefrontSensor(pyRTCComponent):
         if filename == '':
             self.dark = np.zeros_like(self.dark)
         else: #If we have a filename
-            self.dark = np.load(filename)
+            dark_load = np.load(filename)
+            if dark_load.shape != self.imageRawShape:
+                print(f"darkFile {dark_load.shape} does not match expected shape {self.imageRawShape}.")
+                self.dark = np.zeros_like(self.dark)
+            self.dark = dark_load.astype(self.imageDType)
         return
     
     def plot(self) -> None:

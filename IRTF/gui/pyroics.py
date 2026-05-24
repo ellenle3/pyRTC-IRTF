@@ -1,8 +1,15 @@
 import Pyro5.api
 import json
 import os
+import signal
+import sys
+import threading
 import pyRTC.utils as utils
 from pyRTC import *
+
+from Pyro5.errors import CommunicationError
+import Pyro5.configure
+Pyro5.configure.DETAILED_TRACEBACK = True  # allow remote traceback
 
 from pathlib import Path
 CONFIG_PATH = Path(__file__).parent.parent / "config"
@@ -10,6 +17,19 @@ ICS_URI_PATH = CONFIG_PATH / "pyrtc_uri.txt"
 PYRTC_CLASS_PATH = Path(__file__).parent.parent.parent / "pyRTC"
 with open(CONFIG_PATH / "ports.json") as f:
     PORTS = json.load(f)
+
+def get_ics_proxy():
+    # Each thread will need its own proxy for the ICS.
+    with open(ICS_URI_PATH) as f:
+        uri = f.read().strip()
+    try:
+        proxy = Pyro5.api.Proxy(uri)
+        # Test the connection
+        proxy._pyroBind()
+    except CommunicationError:
+        raise ConnectionError(f"Could not connect to ICS at {uri}. Is the ICS running?")
+    
+    return Pyro5.api.Proxy(uri)
 
 @Pyro5.api.expose
 class PyroICS:
@@ -19,7 +39,7 @@ class PyroICS:
     if the GUI crashes.
 
     ICS = Instrument Control Server
-    """
+    """    
     def __init__(self):
         self.components = {
             "wfc": {
@@ -54,28 +74,59 @@ class PyroICS:
             "ImakaTelemetry": get_imakatel
         }
 
+        self.errors = {
+            0: "Success",
+            1: "pyRTC run success",
+            2: "Component already exists",
+            3: "Component does not exist",
+            4: "Invalid component type",
+            5: "Failed to launch",
+            6: "Shutdown timed out",
+            7: "Shutdown encountered an error",
+            -1: "pyRTC error while running function"
+        }
+
     def get_available_launchers(self):
         return list(self.launcher_funcs.keys())
 
     def launch(self, name, component_type):
         if self.components[name]["launcher"] is not None:
-            return 1
+            return 2
         if component_type not in self.launcher_funcs:
-            return -1
-        try:
-            launcher = self.launcher_funcs[component_type]()
-            launcher.launch()
-            self.components[name]["launcher"] = launcher
-            self.components[name]["type"] = component_type
-            return 0
-        except Exception as e:
-            return -1
+            return 4
+        launcher = self.launcher_funcs[component_type]()
+        launcher.launch()
+        self.components[name]["launcher"] = launcher
+        self.components[name]["type"] = component_type
+        return 0
         
-    def shutdown(self, name):
+    def shutdown(self, name, timeout=5.0):
         print(f"Shutting down {name}")
         component = self.components[name]["launcher"]
-        try_shutdown(component)
-        self.components[name] = { "launcher": None, "type": None }
+        
+        result = [None]
+        def do_shutdown():
+            try:
+                result[0] = try_shutdown(component)
+            except Exception as e:
+                result[0] = e
+
+        t = threading.Thread(target=do_shutdown)
+        t.start()
+        t.join(timeout=timeout)
+
+        if t.is_alive():
+            print(f"\033[91mWARNING: {name} shutdown timed out after {timeout} s.\033[0m")
+            self.components[name] = {"launcher": None, "type": None}
+            return 6
+
+        if isinstance(result[0], Exception):
+            print(f"\033[91mERROR: {name} shutdown failed: {result[0]}\033[0m")
+            self.components[name] = {"launcher": None, "type": None}
+            return 7
+
+        self.components[name] = {"launcher": None, "type": None}
+        del component
         return 0
     
     def shutdown_all(self):
@@ -87,27 +138,67 @@ class PyroICS:
         
     def run(self, name, function, *args):
         component = self.components[name]["launcher"]
+        comptype = self.components[name]["type"]
         if component is None:
-            return 1
-        result = component.run(function, *args)
+            return 3
+        if function in ["setRoi", "setBinning"] and comptype in ["AndorWFS", "FELIXsim"]:
+            result = self.run_and_reset_wfs_shms(function, *args)
+        else:
+            result = component.run(function, *args)
         return result
     
     def get(self, name, property_name):
         component = self.components[name]["launcher"]
         if component is None:
-            return 1
+            return 3
         result = component.getProperty(property_name)
         return result
     
     def set(self, name, property_name, value):
         component = self.components[name]["launcher"]
         if component is None:
-            return 1
+            return 3
         component.setProperty(property_name, value)
         return 0
     
     def get_type(self, name):
         return self.components[name]["type"]
+    
+    def run_and_reset_wfs_shms(self, function, *args):
+        # For when the WFS image size changes from ROI or binning. This is significantly
+        # faster than shutting down all of the components and reconnecting to them.
+
+        # Stop everything (not shut down, just pause)
+        for key, val in self.components.items():
+            if self.is_connected(key):
+                if key == "tel":
+                    val["launcher"].run("cancelRecording")  # stop telemetry stream if it's running
+                val["launcher"].run("stop")
+
+        # Set the WFS binning or ROI
+        clear_shms(["wfs", "wfsRaw", "subApMasks"])
+        result = self.components["wfs"]["launcher"].run(function, *args)
+
+        # Reset the WFS SHMs according to the new size
+        self.components["wfs"]["launcher"].run("initWFSMemory")  # must do this first
+        if self.is_connected("slopes"):
+            self.components["slopes"]["launcher"].run("initWFSMemoryFelix")  # slopes depend on wfs size
+        # Leave other components - loop does not access the WFS SHM and telemetry
+        # reinits it every time it starts a new recording
+
+        # Start again
+        for key, val in self.components.items():
+            if self.is_connected(key):
+                val["launcher"].run("start")
+
+        return result
+    
+    def reset_shms(self):
+        self.shutdown_all()
+        shm_names = ["wfs", "wfsRaw", "wfc", "wfc2D", "wfcShape", "signal", "signal2D",
+                     "psfShort", "psfLong", "wfsInfo", "loop", "refSlopes", "subApMasks",
+                     "cmat", "m2c", "simInjectedSlopes"] #list of SHMs to reset
+        clear_shms(shm_names)
 
 def check_config_and_make_launcher(hardware_class, config, port_name):
     # Need to explicilty check these files or the GUI will hang itself
@@ -179,16 +270,6 @@ def reset_shms():
                  "psfShort", "psfLong", "wfsInfo", "loop", "refSlopes", "subApMasks",
                  "cmat", "m2c", "simInjectedSlopes"] #list of SHMs to reset
     clear_shms(shm_names)
-
-def reset_wfs_shm(wfs, loop, slopes):
-
-    # reset the WFS SHM
-
-    # reset slopes
-
-    # reset loop wfsInfo SHM
-    
-    return wfs, loop, slopes
 
 if __name__ == "__main__":
     ics = PyroICS()

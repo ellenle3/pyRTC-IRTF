@@ -1367,7 +1367,7 @@ color: white;</string>
 }</string>
      </property>
      <property name="currentIndex">
-      <number>1</number>
+      <number>0</number>
      </property>
      <widget class="QWidget" name="tabControls_AO">
       <attribute name="title">
@@ -2709,44 +2709,11 @@ color: white;</string>
       <attribute name="title">
        <string>Setup</string>
       </attribute>
-      <widget class="QPushButton" name="initall_button">
-       <property name="geometry">
-        <rect>
-         <x>50</x>
-         <y>80</y>
-         <width>111</width>
-         <height>41</height>
-        </rect>
-       </property>
-       <property name="minimumSize">
-        <size>
-         <width>50</width>
-         <height>30</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>16777215</width>
-         <height>16777215</height>
-        </size>
-       </property>
-       <property name="font">
-        <font>
-         <family>Arial</family>
-         <pointsize>16</pointsize>
-         <italic>false</italic>
-         <bold>false</bold>
-        </font>
-       </property>
-       <property name="text">
-        <string>reconnect all</string>
-       </property>
-      </widget>
       <widget class="QPushButton" name="gridComponents_ASM_init_button">
        <property name="geometry">
         <rect>
-         <x>160</x>
-         <y>140</y>
+         <x>70</x>
+         <y>80</y>
          <width>100</width>
          <height>32</height>
         </rect>
@@ -2770,8 +2737,8 @@ color: white;</string>
       <widget class="QPushButton" name="gridComponents_loop_init_button">
        <property name="geometry">
         <rect>
-         <x>156</x>
-         <y>250</y>
+         <x>66</x>
+         <y>190</y>
          <width>100</width>
          <height>32</height>
         </rect>
@@ -2795,8 +2762,8 @@ color: white;</string>
       <widget class="QPushButton" name="gridComponents_slopes_init_button">
        <property name="geometry">
         <rect>
-         <x>156</x>
-         <y>210</y>
+         <x>66</x>
+         <y>150</y>
          <width>100</width>
          <height>32</height>
         </rect>
@@ -2820,8 +2787,8 @@ color: white;</string>
       <widget class="QPushButton" name="gridComponents_ASM_stop_button">
        <property name="geometry">
         <rect>
-         <x>274</x>
-         <y>140</y>
+         <x>184</x>
+         <y>80</y>
          <width>100</width>
          <height>32</height>
         </rect>
@@ -2842,22 +2809,30 @@ color: white;</string>
         <string>stop ASM</string>
        </property>
       </widget>
-      <widget class="QPushButton" name="kill_button">
+      <widget class="QPushButton" name="resetSHMs_button">
        <property name="geometry">
         <rect>
-         <x>440</x>
-         <y>80</y>
+         <x>30</x>
+         <y>460</y>
          <width>101</width>
-         <height>51</height>
+         <height>21</height>
         </rect>
        </property>
        <property name="styleSheet">
-        <string notr="true">color: white;
-background-color: darkred;</string>
+        <string notr="true">QPushButton {
+    background-color: orange;
+    color: black;
+    border: 1px solid orange;
+    border-radius: 4px;
+    padding: 4px;
+}
+QPushButton:pressed {
+    background-color: brown;
+    border: 1px solid brown;
+}</string>
        </property>
        <property name="text">
-        <string>reconnect
-and kill all</string>
+        <string>Reset SHMs</string>
        </property>
       </widget>
       <widget class="QWidget" name="layoutWidget">
@@ -2923,8 +2898,8 @@ and kill all</string>
       <widget class="QPushButton" name="gridComponents_loop_stop_button">
        <property name="geometry">
         <rect>
-         <x>270</x>
-         <y>250</y>
+         <x>180</x>
+         <y>190</y>
          <width>100</width>
          <height>32</height>
         </rect>
@@ -2948,8 +2923,8 @@ and kill all</string>
       <widget class="QPushButton" name="gridComponents_slopes_stop_button">
        <property name="geometry">
         <rect>
-         <x>270</x>
-         <y>210</y>
+         <x>180</x>
+         <y>150</y>
          <width>100</width>
          <height>32</height>
         </rect>

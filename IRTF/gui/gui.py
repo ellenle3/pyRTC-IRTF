@@ -10,35 +10,19 @@ from PyQt6.QtGui import QIntValidator, QDoubleValidator, QColor, QTextCursor, QI
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 #from IRTF.gui.pyrtcgui_setup import Ui_pyrtcGUI
-from gui_subwindows import *
-from pyroics import ICS_URI_PATH
-
-import Pyro5.api  # to talk to the ICS
-from Pyro5.errors import CommunicationError
+from subwindows import *
+from pyroics import get_ics_proxy
 
 # Get the directory of the current Python file
 BASE_DIR = Path(__file__).parent
 IPC_PATH = BASE_DIR / "ipc_files.json"
 MAX_LOG_LINES = 100  # max length of console log
 
-def get_ics_proxy():
-    # Each thread will need its own proxy for the ICS.
-    with open(ICS_URI_PATH) as f:
-        uri = f.read().strip()
-    try:
-        proxy = Pyro5.api.Proxy(uri)
-        # Test the connection
-        proxy._pyroBind()
-    except CommunicationError:
-        raise ConnectionError(f"Could not connect to ICS at {uri}. Is the ICS running?")
-    
-    return Pyro5.api.Proxy(uri)
-
 class MainWindow(QWidget):
     def __init__(self):
         signal.signal(signal.SIGINT, self._on_ctrl_c) # Allow Ctrl-C to quit the app in terminal
         super().__init__()
-        uic.loadUi(os.path.join(BASE_DIR, "pyrtc_felix_control_gui.ui"), self)
+        uic.loadUi(os.path.join(BASE_DIR, "pyrtc_felix_control.ui"), self)
         # iconpath = "tropius.icns"
         # self.setWindowIcon(QIcon(str(iconpath)))
 
@@ -96,12 +80,13 @@ class MainWindow(QWidget):
         self.gridIXON_coadd_entry.setValidator(QIntValidator(1, 1000))
         self.gridIXON_itime_entry.returnPressed.connect(lambda: self.on_itime_return_pressed(self.gridIXON_itime_entry))
         self.gridIXON_coadd_entry.returnPressed.connect(self.on_ixon_coadd_return_pressed)
-        self.gridIXON_Array_button.clicked.connect(self.on_ixon_array_clicked)
+        self.gridIXON_Array_button.clicked.connect(lambda: self.on_array_clicked(self.gridIXON_Array_entry))
         self.gridIXON_XYbinning_combo.currentTextChanged.connect(lambda: self.on_xybinning_changed(self.gridIXON_XYbinning_combo))
         self.gridIXON_ReadOut_combo.currentTextChanged.connect(self.on_ixon_readout_changed)
         self.gridIXON_PreampGain_combo.currentTextChanged.connect(self.on_ixon_preampgain_changed)
         self.gridIXON_VSS_combo.currentTextChanged.connect(self.on_ixon_vss_changed)
         self.gridIXON_ROI_button.clicked.connect(self.on_ixon_roi_clicked)
+        self.gridIXON_dark_button.clicked.connect(self.on_ixon_dark_clicked)
         
         # SimCam controls
         self.gridSimCam_itime_entry.setValidator(QDoubleValidator(0.0, 30.0, 5)) 
@@ -109,7 +94,7 @@ class MainWindow(QWidget):
         self.gridSimCam_SlopeNoise_entry.setValidator(QDoubleValidator(0.0, 2, 2))
         self.gridSimCam_lag_entry.setValidator(QIntValidator(0, 100))
         self.gridSimCam_itime_entry.returnPressed.connect(lambda: self.on_itime_return_pressed(self.gridSimCam_itime_entry))
-        self.gridSimCam_Array_button.clicked.connect(self.on_simcam_array_clicked)
+        self.gridSimCam_Array_button.clicked.connect(lambda: self.on_array_clicked(self.gridSimCam_Array_entry))
         self.gridSimCam_XYbinning_combo.currentTextChanged.connect(lambda: self.on_xybinning_changed(self.gridSimCam_XYbinning_combo))
         self.gridSimCam_ROI_button.clicked.connect(self.on_simcam_roi_clicked)
         self.gridSimCam_Amplitude_entry.returnPressed.connect(self.on_simcam_amplitude_return_pressed)
@@ -152,7 +137,14 @@ class MainWindow(QWidget):
         # self.gridComponents_slopes_stop_button.clicked.connect(self._stop_slopes)
         # self.gridComponents_loop_init_button.clicked.connect(self._init_loop)
         # self.gridComponents_loop_stop_button.clicked.connect(self._stop_loop)
-        self.kill_button.clicked.connect(self.ics.shutdown_all)
+        self.resetSHMs_button.clicked.connect(self.reset_SHMs)
+
+    def reset_SHMs(self):
+        self.log("Shutting down all components and resetting SHMs.", "orange")
+        self.ics.reset_shms()
+        # switch tabs back to off
+        self.tabControls_AO_Camera.setCurrentIndex(0)
+        self.tabLoopParams.setCurrentIndex(0)
 
     # -----------------
     # Top panel buttons
@@ -224,6 +216,13 @@ class MainWindow(QWidget):
                         
         # Initialize new camera if switching to it
         if index == 1:
+            # Check if Andor SDK is installed
+            try:
+                import pyAndorSDK2
+            except ImportError:
+                self.log("Andor SDK not found.", "red")
+                self.tabControls_AO_Camera.setCurrentIndex(0)  # switch back to OFF tab
+                return
             self.worker = IXONInitWorker("IXON", self._start_ixon)
             self.worker.log_signal.connect(self.log)
             self.worker.status_cam_signal.connect(self.update_status_camera)
@@ -256,26 +255,38 @@ class MainWindow(QWidget):
         self.ics.run("wfs", "setExposure", texpos)
         self.log("itime " + str(texpos))
 
+    def on_array_clicked(self, entry):
+        values = [int(x) for x in entry.text().split()]
+        if len(values) != 4:
+            self.log("ROI must be defined by 4 integers: width, height, left, top", color="red")
+            return
+        width, height, left, top = values
+        if width <= 0 or height <= 0:
+            self.log("Width and height must be positive integers", color="red")
+            return
+        self.ics.run("wfs", "setRoi", (width, height, left, top))
+
     def on_xybinning_changed(self, combo):
-        binning = combo.currentIndex()
+        binning = int(combo.currentText())
         self.log("Resetting shared memories as data size has changed. One moment...", "orange")
-        # Destroy data viewer
-        #reset_shms()
-        # Open data viewer window again
-        #self.ics.run("wfs", "setBinning", binning)
+        self.ics.run("wfs", "setBinning", binning)
 
     # IXON
     def _start_ixon(self):
         self.ics.launch("wfs", "AndorWFS")
         self.ics.run("wfs", "stop")
 
-        # Initialize readout options
-        capabilities = self.ics.run("wfs", "getCapabilities")
+        # Initialize readout options - HARD CODED TO WORK WITH FELIX LAB CAMERA.
+        # Run AndorWFS.showAvailableReadout() in soft RTC mode to get this output.
+        capabilities = {  
+            'HSSpeeds': [17.0, 10.0, 5.0, 1.0],
+            'VSSpeeds': [0.3, 0.5, 0.9, 1.7, 3.3],
+            'VSSpeedRecommended': {'index': 4, 'speed': 3.3},
+            'AmpModes': ['ElectronMultiplying', 'Conventional']
+        }
     
         # Make the capabilities list with the same convention as the Felix XUI:
         # amplifier_channel_hsspeed
-        print(capabilities)
-        print(capabilities["AmpModes"])
         cvidx = capabilities["AmpModes"].index("Conventional")
 
         self.IXON_ReadOut_Options = {}
@@ -300,22 +311,29 @@ class MainWindow(QWidget):
             }
             self.gridIXON_VSS_combo.addItem(key)
 
-        # Set to default values
-        # default_readout = "CV_16bit_17MHz"
-        # default_vss = "500ns"
-
-        # self.gridIXON_ReadOut_combo.setCurrentText(default_readout)
-        # self.gridIXON_VSS_combo.setCurrentText(default_vss)
-
+        self.set_ixon_defaults()
         self.is_IXON_enabled = True
+
+    def set_ixon_defaults(self):
+        self.gridIXON_itime_entry.setText("5.0")
+        self.on_itime_return_pressed(self.gridIXON_itime_entry)
+        self.gridIXON_coadd_entry.setText("1")
+        self.on_ixon_coadd_return_pressed()
+        self.gridIXON_Array_entry.setText("512 512 0 0")
+        self.on_array_clicked(self.gridIXON_Array_entry)
+        self.gridIXON_XYbinning_combo.setCurrentIndex(0)  # set to 1
+        self.on_xybinning_changed(self.gridIXON_XYbinning_combo)
+        self.gridIXON_ReadOut_combo.setCurrentindex(0)  # 17 MHz CV 16 bit
+        self.on_ixon_readout_changed()
+        self.gridIXON_PreampGain_combo.setCurrentIndex(0)  # set to 1
+        self.on_ixon_preampgain_changed()
+        self.gridIXON_VSS_combo.setCurrentIndex(1)  # set to 500 ns
+        self.on_ixon_vss_changed()
 
     def on_ixon_coadd_return_pressed(self):
         coadds = int(self.gridIXON_coadd_entry.text())
         self.ics.run("wfs", "setCoadds", coadds)
         self.log("coadds " + str(coadds))
-
-    def on_ixon_array_clicked(self):
-        pass
 
     def on_ixon_readout_changed(self):
         key = self.gridIXON_ReadOut_combo.currentText()
@@ -334,10 +352,24 @@ class MainWindow(QWidget):
 
     def on_ixon_roi_clicked(self):
         pass
+
+    def on_ixon_dark_clicked(self):
+        pass
     
     # SimCam
-    def on_simcam_array_clicked(self):
-        pass
+    def set_simcam_defaults(self):
+        self.gridSimCam_itime_entry.setText("0.1")
+        self.on_itime_return_pressed(self.gridSimCam_itime_entry)
+        self.gridSimCam_Array_entry.setText("512 512 0 0")
+        self.on_array_clicked(self.gridSimCam_Array_entry)
+        self.gridSimCam_XYbinning_combo.setCurrentIndex(0)  # set to 1
+        self.on_xybinning_changed(self.gridSimCam_XYbinning_combo)
+        self.gridSimCam_Amplitude_entry.setText("30.0")
+        self.on_simcam_amplitude_return_pressed()
+        self.gridSimCam_SlopeNoise_entry.setText("0.0")
+        self.on_simcam_slope_noise_return_pressed()
+        self.gridSimCam_lag_entry.setText("0")
+        self.on_simcam_lag_return_pressed()
 
     def on_simcam_roi_clicked(self):
         pass
@@ -356,16 +388,6 @@ class MainWindow(QWidget):
         lag = int(self.gridSimCam_lag_entry.text())
         self.ics.run("wfs", "setLag", lag)
         self.log("Lag " + str(lag))
-
-    def reset_wfs_shm_only(self):
-        # Pause the WFS camera
-
-        # Reset WFS component and relaunch the SHM
-        
-        # Reset Slopes process
-        
-        # If loop exists, reset only the wfsInfo component
-        pass
 
     # -----------
     # Loop params
@@ -619,8 +641,61 @@ class LoopInitWorker(QThread):
         self.status_loop_signal.emit("Running")
         self.done.emit(self.name)
 
+class ICSStatusWorker(QThread):
+    # Updates the status panel routinely
+    status_cam_signal = pyqtSignal(str)
+    status_ASM_signal = pyqtSignal(str)
+    status_loop_signal = pyqtSignal(str)
+    status_ICS_signal =  pyqtSignal(str)
+
+    def __init__(self, poll_interval=2):
+        super().__init__()
+        self.poll_interval = poll_interval
+        self.running = True
+
+    def run(self):
+        ics = get_ics_proxy()  # New proxy has to go in the run thread, not main
+        while self.running:
+            # Camera status
+            if ics.is_connected("wfs"):
+                self.status_cam_signal.emit("Connected")
+            else:
+                self.status_cam_signal.emit("Disconnected")
+
+            # ASM status
+            if ics.is_connected("wfc"):
+                self.status_ASM_signal.emit("Connected")
+            else:
+                self.status_ASM_signal.emit("Disconnected")
+
+            # Loop status
+            if ics.is_connected("loop"):
+                loop_running = ics.run("loop", "isRunning")
+                if loop_running:
+                    self.status_loop_signal.emit("Running")
+                else:
+                    self.status_loop_signal.emit("Paused")
+            else:
+                self.status_loop_signal.emit("Disconnected")
+
+            # ICS status
+            self.status_ICS_signal.emit("Connected")
+
+            time.sleep(self.poll_interval)
+    
+def cleanup():
+    app.quit()
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+
+    # Let Python process signals every second - allows ctrl C to kill
+    timer = QTimer()
+    timer.start(1000)
+    timer.timeout.connect(lambda: None)
+
+    signal.signal(signal.SIGINT, lambda *_: app.quit())
+
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
