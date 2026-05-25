@@ -1,6 +1,5 @@
 import sys
 import os
-import time
 import signal
 from PyQt6.QtCore import QTimer, QEvent, QThread, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QWidget
@@ -12,7 +11,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 #from IRTF.gui.pyrtcgui_setup import Ui_pyrtcGUI
 from subwindows import *
 from workers import *
-from pyroics import get_ics_proxy
 
 # Get the directory of the current Python file
 BASE_DIR = Path(__file__).parent
@@ -27,6 +25,10 @@ ANDOR_CAPABILITIES = {
             'VSSpeedRecommended': {'index': 4, 'speed': 3.3},
             'AmpModes': ['ElectronMultiplying', 'Conventional']
         }
+
+# PROBABLY RESET SHMS ON STARTUP UNLESS DISABLED IN GUI CONFIG
+# GUI CONFIG SHOULD ALSO STORE DEFAULTS, AND OPTIONS LIKE "SHUTDOWN ON QUIT"
+# TO PERSIST ACROSS SESSIONS.
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -51,6 +53,24 @@ class MainWindow(QWidget):
         # self.update_status_ASM("Disconnected")
         # self.update_status_loop("Disconnected")
 
+        self.ao_cals = {
+            "imat": {
+                "theor_file": None,
+                "synth_file": None,
+                "method": None,
+                "pokeAmp": None,
+                "numItersIM": None
+            },
+            "ncpa": {
+                "ra_target": None,
+                "dec_target": None,
+                "ra_guide": None,
+                "dec_guide": None,
+                "auto_offsets": [0, 0, 0, 0, 0, 0, 0],
+                "user_offsets": [0, 0, 0, 0, 0, 0, 0]
+            }
+
+        }
         self.old_array_input = None  # Store the last ROI in case the camera was toggled on and off
 
         self._connect_signals()
@@ -561,11 +581,11 @@ class MainWindow(QWidget):
     # Mechanism panels
     # ----------------
     def on_shutter_clicked(self):
-        window = IXONControlsWindow(ics=self.ics, start_tab=0, parent=self)
+        window = IXONControlsWindow(start_tab=0, parent=self)
         window.show()
 
     def on_cooler_clicked(self):
-        window = IXONControlsWindow(ics=self.ics, start_tab=1, parent=self)
+        window = IXONControlsWindow(start_tab=1, parent=self)
         window.show()
 
     # -------

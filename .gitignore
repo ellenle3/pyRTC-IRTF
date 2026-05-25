@@ -5,3 +5,4 @@ build/
 pyRTC.egg-info/
 .DS_Store
 IRTF/data
+IRTF/config/local

@@ -1,0 +1,6 @@
+setup:
+  shutdown_on_close: true
+  reset_shms_on_close: true  # if true, will also shut down components on close.
+  min_dark_itime: 1000 # ms
+  NCPA_lookup_table: /home/pyRTC/IRTF/gui/NCPA_lookup.npy
+  base_refSlopes: /home/pyRTC/IRTF/gui/base_refSlopes.npy  # on-axis, unaberrated refSlopes

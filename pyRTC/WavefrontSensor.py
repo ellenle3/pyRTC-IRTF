@@ -377,6 +377,19 @@ class WavefrontSensor(pyRTCComponent):
         plt.show()
         return
     
+    def estimateSNR(self, peak_threshold=98, bg_threshold=60):
+        """
+        Roughly approximates the signal-to-noise ratio of the spots. Pixels above
+        the threshold (%) are considered signal, and pixels below are considered
+        noise (variance of those pixels).
+        """
+        img = self.image.read_noblock()
+        bg_mask = img < np.percentile(img, bg_threshold)
+        img -= img[bg_mask].mean() # in case a dark isn't loaded
+        noise = np.std(img[bg_mask])
+        signal = np.percentile(img, peak_threshold)
+        return signal / noise
+        
 if __name__ == "__main__":
 
     launchComponent(WavefrontSensor, "wfs", start = True)

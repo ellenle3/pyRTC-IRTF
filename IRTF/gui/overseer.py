@@ -27,7 +27,7 @@ def Overseer():
         })
         print(f"Registered check: {name} to run at {frequency} Hz.")
     
-    def check_t3io_total_offset(self):
+    def get_tcs_total_offset(self):
         """Retrieves the current guide box offsets from t3io.
         """
         result = subprocess.run(["t3io", "info", "OS"], capture_output=True, text=True)
@@ -45,10 +45,11 @@ def Overseer():
         """Gets the current offset from t3io and sets it as the last known offset.
         Use at the beginning closed loop operations.
         """
-        self.offset_last = self.check_t3io_total_offset()
+        self.offset_last = self.get_tcs_total_offset()
 
-    def update_t3io_guidebox(self, offset):
-        """Changes the offset
+    def update_guidebox_from_offset(self, offset):
+        """Changes the subaperture masks (basically the guidebox) based differences
+        between the last offset and current offset reported by t3io.
         """
         if offset == self.offset_last:
             return
@@ -89,8 +90,27 @@ def Overseer():
 
         self.offset_last = offset
             
-    def check_commands(self):
-        """Monitors commands sent to ASM.
+    def get_asm_tilt(self):
+        """Retrieves current tilt on the ASM.
+        """
+        # pyRTC has a command cap built in, so we shouldn't have
+        if not self.ics.is_connected("wfc"):
+            print("ASM not connected. Cannot check tilt.")
+            return
+        current_correction = self.ics.get("wfc", "currentCorrection")
+        tip, tilt = current_correction[0], current_correction[1]
+        return tip, tilt
+    
+    def open_loop_and_check_tcs(self):
+        """Opens the loop and checks if the guide box has changed, or if the
+        TCS is slewing.
+
+        Closes the loop again if it was closed before.
+        """
+        pass
+
+    def is_wfs_snr_ok(self):
+        """Returns True if the signal-to-noise ratio in the WFS is okay. 
         """
         pass
 

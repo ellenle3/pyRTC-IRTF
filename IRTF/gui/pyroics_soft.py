@@ -157,8 +157,9 @@ class PyroICSSoft:
             return -1
         return result
 
-    def run_no_response(self, component_type, function, *args):
-        pass # client sends command and does not wait for response; useful for telemetry
+    @Pyro5.api.oneway
+    def run_no_wait(self, component_type, function, *args):
+        self.run(component_type, function, *args)
 
     def run(self, component_type, function, *args):
         if component_type not in self.components:
@@ -191,7 +192,11 @@ class PyroICSSoft:
             component = self.components[component_type]["instance"]
             if component is None:
                 return 3
-            return getattr(component, property_name, -1)
+            result = getattr(component, property_name, -1)
+            # convert to list if it's a numpy array for Pyro serialization
+            if isinstance(result, np.ndarray):
+                return result.tolist()
+            return result
     
     def set(self, component_type, property_name, value):
         if component_type not in self.components:
