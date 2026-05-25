@@ -1,4 +1,8 @@
 {
+    "config_path": "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/config",
+    "ics_uri_path": "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/config/pyrtc_uri.txt",
+    "pyrtc_class_path": "/Users/ellenlee/Documents/pyRTC-IRTF/pyRTC",
+
     "ports": {
         "wfs": 10489,
         "wfc": 10490,

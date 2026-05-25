@@ -48,27 +48,15 @@ class PyroICS:
             self.ports = config["ports"]
         
         self.components = {
-            "wfc": {
-                "instance": None,   # Store launcher object
-                "class": None       # Class name of the component
-            },
-            "wfs": {
-                "instance": None,
-                "class": None
-            },
-            "slopes": {
-                "instance": None,
-                "class": None
-            },
-            "loop": {
-                "instance": None,
-                "class": None
-            },
-            "tel": {
-                "instance": None,
-                "class": None
-            }
+            "wfc": {"instance": None, "class": None},
+            "wfs": {"instance": None, "class": None},
+            "slopes": {"instance": None, "class": None},
+            "loop": {"instance": None, "class": None},
+            "tel": {"instance": None, "class": None}
         }
+
+        # Create an independent Reentrant Lock for each component type
+        self._locks = {ctype: threading.RLock() for ctype in self.components}
 
         self.errors = {
             0: "Success",
@@ -92,75 +80,110 @@ class PyroICS:
         if component_class not in self.launchers:
             return 4
         component_type = self.launchers[component_class]["type"]
-        if self.is_connected(component_type):
-            return 2
         
-        hardware_class = PYRTC_CLASS_PATH / self.launchers[component_class]["class_path"]
-        config_file = CONFIG_PATH / self.launchers[component_class]["config_path"]
-        port = self.ports[component_type]
-        launcher = check_config_and_make_launcher(hardware_class, config_file, port)                                    
-        launcher.launch()
+        # Serialize launching for this specific component type
+        with self._locks[component_type]:
+            if self.is_connected(component_type):
+                return 2
+            
+            hardware_class = PYRTC_CLASS_PATH / self.launchers[component_class]["class_path"]
+            config_file = CONFIG_PATH / self.launchers[component_class]["config_path"]
+            port = self.ports[component_type]
+            launcher = check_config_and_make_launcher(hardware_class, config_file, port)                                    
+            launcher.launch()
 
-        self.components[component_type]["instance"] = launcher
-        self.components[component_type]["class"] = component_class
-        return 0
+            self.components[component_type]["instance"] = launcher
+            self.components[component_type]["class"] = component_class
+            return 0
         
     def shutdown(self, name, timeout=5.0):
-        print(f"Shutting down {name}")
-        component = self.components[name]["instance"]
-        
-        result = [None]
-        def do_shutdown():
-            try:
-                result[0] = try_shutdown(component)
-            except Exception as e:
-                result[0] = e
+        if name not in self.components:
+            return 4
+            
+        # Serialize shutdown actions on this specific component
+        with self._locks[name]:
+            print(f"Shutting down {name}")
+            component = self.components[name]["instance"]
+            if component is None:
+                return 0
+            
+            result = [None]
+            def do_shutdown():
+                try:
+                    result[0] = try_shutdown(component)
+                except Exception as e:
+                    result[0] = e
 
-        t = threading.Thread(target=do_shutdown)
-        t.start()
-        t.join(timeout=timeout)
+            t = threading.Thread(target=do_shutdown)
+            t.start()
+            t.join(timeout=timeout)
 
-        if t.is_alive():
-            print(f"\033[91mWARNING: {name} shutdown timed out after {timeout} s.\033[0m")
+            if t.is_alive():
+                print(f"\033[91mWARNING: {name} shutdown timed out after {timeout} s.\033[0m")
+                self.components[name] = {"instance": None, "class": None}
+                return 6
+
+            if isinstance(result[0], Exception):
+                print(f"\033[91mERROR: {name} shutdown failed: {result[0]}\033[0m")
+                self.components[name] = {"instance": None, "class": None}
+                return 7
+
             self.components[name] = {"instance": None, "class": None}
-            return 6
-
-        if isinstance(result[0], Exception):
-            print(f"\033[91mERROR: {name} shutdown failed: {result[0]}\033[0m")
-            self.components[name] = {"instance": None, "class": None}
-            return 7
-
-        self.components[name] = {"instance": None, "class": None}
-        del component
-        return 0
+            return 0
     
     def shutdown_all(self):
-        for name in self.components:
-            self.shutdown(name)
+        # Acquire all locks in a predictable alphabetical order to prevent cross-client deadlocks
+        all_locks = [self._locks[k] for k in sorted(self._locks.keys())]
+        for lock in all_locks:
+            lock.acquire()
+        try:
+            for name in self.components:
+                self.shutdown(name)  # Safe nested acquire because of RLock
+        finally:
+            for lock in reversed(all_locks):
+                lock.release()
         
     def run(self, component_type, function, *args):
-        component = self.components[component_type]["instance"]
-        if component is None:
-            return 3
-        if function in ["setRoi", "setBinning"] and component_type=="wfs":
-            result = self.run_and_reset_wfs_shms(function, *args)
-        else:
-            result = component.run(function, *args)
-        return result
+        if component_type not in self.components:
+            return 4
+            
+        # Special Multi-Component Modification Case
+        if function in ["setRoi", "setBinning"] and component_type == "wfs":
+            # Collect all locks alphabetically since run_and_reset_wfs_shms cascades across components
+            all_locks = [self._locks[k] for k in sorted(self._locks.keys())]
+            for lock in all_locks:
+                lock.acquire()
+            try:
+                return self.run_and_reset_wfs_shms(function, *args)
+            finally:
+                for lock in reversed(all_locks):
+                    lock.release()
+
+        # Normal isolated execution
+        with self._locks[component_type]:
+            component = self.components[component_type]["instance"]
+            if component is None:
+                return 3
+            return component.run(function, *args)
     
     def get(self, component_type, property_name):
-        component = self.components[component_type]["instance"]
-        if component is None:
-            return 3
-        result = component.getProperty(property_name)
-        return result
+        if component_type not in self.components:
+            return 4
+        with self._locks[component_type]:
+            component = self.components[component_type]["instance"]
+            if component is None:
+                return 3
+            return component.getProperty(property_name)
     
     def set(self, component_type, property_name, value):
-        component = self.components[component_type]["instance"]
-        if component is None:
-            return 3
-        component.setProperty(property_name, value)
-        return 0
+        if component_type not in self.components:
+            return 4
+        with self._locks[component_type]:
+            component = self.components[component_type]["instance"]
+            if component is None:
+                return 3
+            component.setProperty(property_name, value)
+            return 0
     
     def get_component_class(self, component_type):
         return self.components[component_type]["class"]
@@ -184,8 +207,6 @@ class PyroICS:
         self.components["wfs"]["instance"].run("initWFSMemory")  # must do this first
         if self.is_connected("slopes"):
             self.components["slopes"]["instance"].run("initWFSMemoryFelix")  # slopes depend on wfs size
-        # Leave other components - loop does not access the WFS SHM and telemetry
-        # reinits it every time it starts a new recording
 
         # Start again
         for key, val in self.components.items():
@@ -199,14 +220,13 @@ class PyroICS:
             shm_names = ["wfs", "wfsRaw", "wfc", "wfc2D", "wfcShape", "signal", "signal2D",
                          "psfShort", "psfLong", "wfsInfo", "loop", "refSlopes", "subApMasks",
                          "cmat", "m2c", "simInjectedSlopes"]  #list of SHMs to reset
-        clear_shms(shm_names)  # suppress print statements
+        clear_shms(shm_names)
 
     def reset_wfs_shms(self):
         # Resets all shared memories dependent on WFS image size
-            self.reset_shms(["wfs", "wfsRaw", "subApMasks"])
+        self.reset_shms(["wfs", "wfsRaw", "subApMasks"])
 
 def check_config_and_make_launcher(hardware_class, config, port):
-    # Need to explicilty check these files or the GUI will hang itself
     if not os.path.exists(hardware_class):
         raise FileNotFoundError(f"Hardware class file {hardware_class} not found.")
     if not os.path.exists(config):

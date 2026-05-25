@@ -55,23 +55,15 @@ class PyroICSSoft:
                 "instance": None,   # Store launcher object
                 "class": None       # Class name of the component
             },
-            "wfs": {
-                "instance": None,
-                "class": None
-            },
-            "slopes": {
-                "instance": None,
-                "class": None
-            },
-            "loop": {
-                "instance": None,
-                "class": None
-            },
-            "tel": {
-                "instance": None,
-                "class": None
-            }
+            "wfs": { "instance": None, "class": None },
+            "slopes": { "instance": None, "class": None },
+            "loop": { "instance": None, "class": None },
+            "tel": { "instance": None, "class": None },
         }
+
+        # Create an independent Reentrant Lock for each component type to
+        # prevent multiple clients from trying to access the same component
+        self._locks = {ctype: threading.RLock() for ctype in self.components}
 
         self.errors = {
             0: "Success",
@@ -95,81 +87,114 @@ class PyroICSSoft:
         if component_class not in self.launchers:
             return 4
         component_type = self.launchers[component_class]["type"]
-        if self.is_connected(component_type):
-            return 2
         
-        hardware_class = PYRTC_CLASS_PATH / self.launchers[component_class]["class_path"]
-        config_file = CONFIG_PATH / self.launchers[component_class]["config_path"]
-        conf = utils.read_yaml_file(config_file)[component_type]
-        instance = instantiate_component(component_class, hardware_class, conf)                                    
+        # Guard component creation
+        with self._locks[component_type]:
+            if self.is_connected(component_type):
+                return 2
+            
+            hardware_class = PYRTC_CLASS_PATH / self.launchers[component_class]["class_path"]
+            config_file = CONFIG_PATH / self.launchers[component_class]["config_path"]
+            conf = utils.read_yaml_file(config_file)[component_type]
+            instance = instantiate_component(component_class, hardware_class, conf)                                    
 
-        self.components[component_type]["instance"] = instance
-        self.components[component_type]["class"] = component_class
-        return 0
+            self.components[component_type]["instance"] = instance
+            self.components[component_type]["class"] = component_class
+            return 0
         
     def shutdown(self, name, timeout=5.0):
-        print(f"Shutting down {name}")
-        component = self.components[name]["instance"]
-        
-        result = [None]
-        def do_shutdown():
-            try:
-                result[0] = try_shutdown(component)
-            except Exception as e:
-                result[0] = e
+        if name not in self.components:
+            return 4
+            
+        # Serialize shutdown actions on this specific component
+        with self._locks[name]:
+            print(f"Shutting down {name}")
+            component = self.components[name]["instance"]
+            if component is None:
+                return 0
+            
+            result = [None]
+            def do_shutdown():
+                try:
+                    result[0] = try_shutdown(component)
+                except Exception as e:
+                    result[0] = e
 
-        t = threading.Thread(target=do_shutdown)
-        t.start()
-        t.join(timeout=timeout)
+            t = threading.Thread(target=do_shutdown)
+            t.start()
+            t.join(timeout=timeout)
 
-        if t.is_alive():
-            print(f"\033[91mWARNING: {name} shutdown timed out after {timeout} s.\033[0m")
+            if t.is_alive():
+                print(f"\033[91mWARNING: {name} shutdown timed out after {timeout} s.\033[0m")
+                self.components[name] = {"instance": None, "class": None}
+                return 6
+
+            if isinstance(result[0], Exception):
+                print(f"\033[91mERROR: {name} shutdown failed: {result[0]}\033[0m")
+                self.components[name] = {"instance": None, "class": None}
+                return 7
+
             self.components[name] = {"instance": None, "class": None}
-            return 6
-
-        if isinstance(result[0], Exception):
-            print(f"\033[91mERROR: {name} shutdown failed: {result[0]}\033[0m")
-            self.components[name] = {"instance": None, "class": None}
-            return 7
-
-        self.components[name] = {"instance": None, "class": None}
-        del component
-        return 0
+            return 0
     
     def shutdown_all(self):
-        for name in self.components:
-            self.shutdown(name)
+        # To safely lock everything without deadlocking, acquire all locks in a fixed alphabetical order
+        all_locks = [self._locks[k] for k in sorted(self._locks.keys())]
+        for lock in all_locks: 
+            lock.acquire()
+        try:
+            for name in self.components:
+                self.shutdown(name) # Safe because of RLock
+        finally:
+            for lock in reversed(all_locks): 
+                lock.release()
 
     def _soft_run(self, component, function, *args):
-        """Slot in replacement for hard RTC mode's component.run() for easier
-        refactoring.
-        """
-        func_to_run = getattr(component, function, lambda: -1)  # -1 for pyRTC error code
+        func_to_run = getattr(component, function, lambda: -1)
         return func_to_run(*args)
 
     def run(self, component_type, function, *args):
-        component = self.components[component_type]["instance"]
-        if component is None:
-            return 3
-        if function in ["setRoi", "setBinning"] and component_type=="wfs":
-            result = self.run_and_reset_wfs_shms(function, *args)
-        else:
-            result = self._soft_run(component, function, *args)
-        return result
+        if component_type not in self.components:
+            return 4
+            
+        # Special Case: Global State Modification
+        if function in ["setRoi", "setBinning"] and component_type == "wfs":
+            # This method acts on multiple components, so it must capture ALL locks 
+            # in a predictable sorted order to prevent cross-client deadlocks.
+            all_locks = [self._locks[k] for k in sorted(self._locks.keys())]
+            for lock in all_locks: 
+                lock.acquire()
+            try:
+                return self.run_and_reset_wfs_shms(function, *args)
+            finally:
+                for lock in reversed(all_locks): 
+                    lock.release()
+
+        # Normal Case: Single component target
+        with self._locks[component_type]:
+            component = self.components[component_type]["instance"]
+            if component is None:
+                return 3
+            return self._soft_run(component, function, *args)
     
     def get(self, component_type, property_name):
-        component = self.components[component_type]["instance"]
-        if component is None:
-            return 3
-        result = getattr(component, property_name, -1)
-        return result
+        if component_type not in self.components:
+            return 4
+        with self._locks[component_type]:
+            component = self.components[component_type]["instance"]
+            if component is None:
+                return 3
+            return getattr(component, property_name, -1)
     
     def set(self, component_type, property_name, value):
-        component = self.components[component_type]["instance"]
-        if component is None:
-            return 3
-        setattr(component, property_name, value)
-        return 0
+        if component_type not in self.components:
+            return 4
+        with self._locks[component_type]:
+            component = self.components[component_type]["instance"]
+            if component is None:
+                return 3
+            setattr(component, property_name, value)
+            return 0
     
     def get_component_class(self, component_type):
         return self.components[component_type]["class"]
@@ -236,7 +261,6 @@ def reset_shms():
                  "psfShort", "psfLong", "wfsInfo", "loop", "refSlopes", "subApMasks",
                  "cmat", "m2c", "simInjectedSlopes"] #list of SHMs to reset
     clear_shms(shm_names)
-
 
 if __name__ == "__main__":
     ics = PyroICSSoft()

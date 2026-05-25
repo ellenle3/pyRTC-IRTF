@@ -30,7 +30,9 @@ class MainWindow(QWidget):
         self.panelConsole_display_text.setReadOnly(True)          # for console output
 
         # Connect to the ICS through Pyro
-        self.ics = get_ics_proxy()
+        self.pyro_worker = PyroQueueWorker()
+        self.pyro_worker.start()
+        self.ics = AsyncICSProxy(self)
 
         self.is_shutdown_on_close = False
 
@@ -45,6 +47,10 @@ class MainWindow(QWidget):
         self._connect_signals()
         self.tabControls_AO_Camera.setCurrentIndex(0)  # start with everything off
         self.tabLoopParams.setCurrentIndex(0)
+    
+    def call_ics(self, fn, callback=None, error_callback=None):
+        """Funnel all macro requests straight into the secure background thread queue."""
+        return self.pyro_worker.submit_blocking_task(fn)
 
     def eventFilter(self, obj, event):
         # For clicking frame panels typically used for mechanisms

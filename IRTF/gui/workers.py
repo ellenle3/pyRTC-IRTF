@@ -3,7 +3,14 @@ encounters an error.
 """
 import time
 import signal
-from PyQt6.QtCore import QTimer, QEvent, QThread, pyqtSignal
+import os
+import sys
+import queue
+import threading
+from PyQt6.QtCore import QTimer, QEvent, QThread, pyqtSignal, QCoreApplication
+from Pyro5.errors import CommunicationError
+
+Pyro5.configure.COMMTIMEOUT = 2.0
 
 from IRTF.gui.pyroics import get_ics_proxy
 
@@ -129,32 +136,85 @@ class ICSStatusWorker(QThread):
 
             time.sleep(self.poll_interval)
 
-class PyroWorker(QThread):
-    # Used to call the ICS. Avoids uninterruptible threads that require a system
-    # reboot to eliminate.
-    result_ready = pyqtSignal(object)
-    error_occurred = pyqtSignal(str)
-
-    def __init__(self, fn):
+class PyroQueueWorker(QThread):
+    """Executes Pyro commands sequentially and uses a threading. Event to safely
+    return data back to the calling thread synchronously.
+    """
+    def __init__(self):
         super().__init__()
-        self.fn = fn
+        self.task_queue = queue.Queue()
+        self._running = True
+        self._proxy = None
 
     def run(self):
         try:
-            self.result_ready.emit(self.fn(get_ics_proxy()))
+            self._proxy = get_ics_proxy()
         except Exception as e:
-            self.error_occurred.emit(str(e))
+            self.handle_fatal_disconnect(f"Initial connection failed: {e}")
+            return
+
+        while self._running:
+            try:
+                # Poll the queue
+                task = self.task_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+
+            fn, done_event, container = task
+            
+            try:
+                # Execute the Pyro call and capture the return value
+                container['result'] = fn(self._proxy)
+            except CommunicationError as e:
+                container['exception'] = e
+                self.handle_fatal_disconnect(e)
+                break
+            except Exception as e:
+                # Capture standard Python/hardware execution exceptions
+                container['exception'] = e
+            finally:
+                # Wake up the waiting GUI thread
+                done_event.set()
+                self.task_queue.task_done()
+
+    def submit_blocking_task(self, fn):
+        """Submits a task to the queue and waits until it finishes,
+
+        returning the value directly or raising an exception.
+        """
+        done_event = threading.Event()
+        container = {'result': None, 'exception': None}
+        
+        self.task_queue.put((fn, done_event, container))
+        
+        # Wait right here until the background thread processes the request
+        done_event.wait()
+        
+        # If the background thread caught an error, raise it here in the main thread
+        if container['exception']:
+            raise container['exception']
+            
+        return container['result']
+
+    def handle_fatal_disconnect(self, error):
+        print(f"\n\033[91m[GUI FATAL] Pyro Server Closed Connection: {error}\033[0m")
+        self._running = False
+        QCoreApplication.quit()
+        
+        print("Force quitting GUI process tree...")
+        sys.stdout.flush()
+        os._exit(1)
 
 class AsyncICSProxy:
-    # This exists to be used as a slot-in replacement of the normal ICS proxy.
+    """A drop-in proxy replacement that feels synchronous to use, but forces execution
+    onto a singular, permanent background thread. Prevents the GUI from hanging
+    permanently if the ICS is prematurely terminated.
+    """
     def __init__(self, window):
         self._window = window
 
     def __getattr__(self, name):
-        def call(*args, callback=None, error_callback=None):
-            self._window.call_ics(
-                lambda p: getattr(p, name)(*args),
-                callback=callback,
-                error_callback=error_callback
-            )
+        def call(*args):
+            # Pass the function execution block down to the window's runner
+            return self._window.call_ics(lambda p: getattr(p, name)(*args))
         return call

@@ -611,36 +611,34 @@ class SlopesProcess(pyRTCComponent):
         subApMasksShape = (self.numSubAps, self.imageShape[0], self.imageShape[1])
         # store in shared memory for plotting
         self.subApMasksShm = ImageSHM("subApMasks", subApMasksShape, '>i8', gpuDevice = self.gpuDevice, consumer=True)
-        self.loadSubApMasks(self.maskSize)
+        self.makeSubApMasks()
         
         ysize, xsize = self.imageShape
         self.yvals = np.arange(ysize).astype(int) - ysize // 2
         self.xvals = np.arange(xsize).astype(int) - xsize // 2
     
-    def loadSubApMasks(self, mask_size, cx=0, cy=0):
+    def makeSubApMasks(self, cx=0, cy=0):
         """
         Generate the sub-aperture quadrant masks. If the generated masks are smaller 
         than self.imageShape, they are padded with zeros to be centered with an optional offset.
 
         Parameters
         ----------
-        mask_size : int
-            Size of the NxN mask to generate.
         cx : int, optional
             X-offset from the center of the image. Default is 0.
         cy : int, optional
             Y-offset from the center of the image. Default is 0.
         """
-        new_mask_size = min(mask_size, self.imageShape[0], self.imageShape[1])
-        if new_mask_size != mask_size:
-            print(f"Warning: Requested mask size {mask_size} is larger than image dimensions {self.imageShape}. "
+        new_mask_size = min(self.maskSize, self.imageShape[0], self.imageShape[1])
+        if new_mask_size != self.maskSize:
+            print(f"Warning: Requested mask size {self.maskSize} is larger than image dimensions {self.imageShape}. "
                   f"Using {new_mask_size} instead.")
-        mask_size = new_mask_size
+        self.maskSize = new_mask_size
 
         # Create base masks
-        loaded_masks = quadrant_masks(mask_size, self.rotation)
+        loaded_masks = quadrant_masks(self.maskSize, self.rotation)
         loaded_masks = loaded_masks.astype('>i8')
-        mask_h, mask_w = mask_size, mask_size
+        mask_h, mask_w = self.maskSize, self.maskSize
 
         target_h, target_w = self.imageShape[0], self.imageShape[1]
 
@@ -653,7 +651,7 @@ class SlopesProcess(pyRTCComponent):
 
         if start_y < 0 or (start_y + mask_h) > target_h or start_x < 0 or (start_x + mask_w) > target_w:
             raise ValueError(
-                f"Generated mask of size {mask_size}x{mask_size} with offsets (cx={cx}, cy={cy}) "
+                f"Generated mask of size {self.maskSize}x{self.maskSize} with offsets (cx={cx}, cy={cy}) "
                 f"spills over the target image boundaries {(target_h, target_w)}."
             )
 
