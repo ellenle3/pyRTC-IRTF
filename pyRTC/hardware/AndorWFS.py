@@ -172,8 +172,8 @@ class AndorWFS(WavefrontSensor):
             vend   = self.roiTop + self.roiHeight - 1
         )
         if ret != self.errors.DRV_SUCCESS:
-            print(f"Error setting ROI: {self.errors.get_error_string(ret)}")\
             super().setRoi(oldroi)
+            raise ValueError(f"Error setting ROI: {self.errors.get_error_string(ret)}")            
             return
 
         # Update number of pixels
@@ -241,19 +241,21 @@ class AndorWFS(WavefrontSensor):
         return
 
     def __del__(self):
-        super().__del__()
-        time.sleep(1e-1)
         self.sdk.AbortAcquisition()
-
-    # def takeDark(self, closeShutter=True):
-    #     if closeShutter:
-    #         self.closeShutter()
-    #     super().takeDark()
-    #     if closeShutter:
-    #         self.openShutter()
         self.sdk.SetAcquisitionMode(self.codes.Acquisition_Mode.SINGLE_SCAN)
         self.closeShutter()
         self.sdk.ShutDown()  # clean up
+
+        super().__del__()
+        time.sleep(1e-1)
+        
+
+    def takeDark(self, closeShutter=True):
+        if closeShutter:
+            self.closeShutter()
+        super().takeDark()
+        if closeShutter:
+            self.openShutter()
         return
     
     def showAvailableReadout(self):

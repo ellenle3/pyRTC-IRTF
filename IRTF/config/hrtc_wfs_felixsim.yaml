@@ -7,9 +7,9 @@ wfs:
   bitDepth: 16
   left: 0
   top: 0 
-  width: 512 #80 
-  height: 512 #80 
-  imageSize: 512 # mimic FELIX 512x512
+  width: 64 
+  height: 64 
+  imageSize: 64 # mimic FELIX 512x512
   darkCount: 5
   #darkFile: "/home/ellenlee/pyRTC/IRTF/calib/darkFELIX.npy"
   affinity: 0

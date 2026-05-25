@@ -411,34 +411,58 @@ class hardwareLauncher:
 
         return
 
-    def launch(self):
-        if not self.running:
-            print(f"Launching Process: {self.hardwareFile}")
-            #self.process = Popen(self.command,stdin=PIPE,stdout=PIPE, text=True, bufsize=1)
-            self.process = Popen(self.command,stdout=PIPE, text=True, bufsize=1) # remove stdin=PIPE to avoid hanging if process is forcefully stoppe
-            self.running = True
+    def launch(self, max_attempts=15):
+            if not self.running:
+                print(f"Launching Process: {self.hardwareFile}")
+                # remove stdin=PIPE to avoid hanging if process is forcefully stopped
+                self.process = Popen(self.command, stdout=PIPE, text=True, bufsize=1) 
+                self.running = True
 
-            # Create a socket object
-            self.processSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            print(f"Waiting for Process at {self.host}:{self.port}")
-            connected = False
-            restTime = 2
-            while not connected:
-                time.sleep(restTime)
-                try:
-                    # Connect to the server
-                    self.processSocket.connect((self.host, self.port))
-                    connected = True
-                except Exception as e:
-                    print(f"Connection failed: {e}")
-                    print("Retrying in {} seconds...".format(restTime))
+                # Create a socket object
+                self.processSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                print(f"Waiting for Process at {self.host}:{self.port}")
+                
+                connected = False
+                restTime = 2
+                attempts = 0
 
-            if isinstance(self.timeout,float) or isinstance(self.timeout,int):
-                self.processSocket.settimeout(self.timeout)
+                while not connected and attempts < max_attempts:
+                    # 1. Fail Fast: Check if the process died prematurely
+                    if self.process.poll() is not None:
+                        print(f"Process terminated unexpectedly with return code {self.process.returncode}.")
+                        self.running = False
+                        self.processSocket.close()
+                        return False
+                    
+                    time.sleep(restTime)
+                    try:
+                        # Connect to the server
+                        self.processSocket.connect((self.host, self.port))
+                        connected = True
+                    except Exception as e:
+                        attempts += 1
+                        print(f"Connection failed: {e}")
+                        print(f"Retrying in {restTime} seconds... (Attempt {attempts}/{max_attempts})")
 
-            print("Connected")
+                # 2. Timeout Fallback: If we hit max attempts without connecting
+                if not connected:
+                    print("Failed to connect to the process after maximum attempts. Shutting down.")
+                    self.running = False
+                    self.processSocket.close()
+                    
+                    # Terminate the unresponsive process if it is still alive
+                    if self.process.poll() is None:
+                        self.process.terminate()
+                    return False
 
-        return
+                # Set timeout if provided
+                if isinstance(self.timeout, float) or isinstance(self.timeout, int):
+                    self.processSocket.settimeout(self.timeout)
+
+                print("Connected")
+                return True
+            
+            return True
     
     def shutdown(self):
         message = {"type": "shutdown"}

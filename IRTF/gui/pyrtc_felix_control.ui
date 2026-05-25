@@ -2984,7 +2984,7 @@ QPushButton:pressed {
         </item>
        </layout>
       </widget>
-      <widget class="QRadioButton" name="radioButton">
+      <widget class="QRadioButton" name="shutdownOnClose_radio">
        <property name="geometry">
         <rect>
          <x>460</x>
@@ -2995,6 +2995,9 @@ QPushButton:pressed {
        </property>
        <property name="text">
         <string>Shut down on close</string>
+       </property>
+       <property name="checked">
+        <bool>false</bool>
        </property>
       </widget>
      </widget>

@@ -1,1 +1,1 @@
-PYRO:pyrtc.ics@localhost:50015
+PYRO:pyrtc_soft.ics@localhost:53309

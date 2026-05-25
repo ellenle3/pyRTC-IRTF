@@ -4,7 +4,6 @@ from pyRTC.WavefrontSensor import *
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 
-import threading
 from time import sleep
 
 def gaussian2d(x, y, c0, s, a):
@@ -63,9 +62,6 @@ class FELIXSimulator(WavefrontSensor):
         self.bias = conf["bias"]
         self.detectorNoise = conf["detectorNoise"]
         self.spotSize = conf["spotSize"]
-
-        self._pause_event = threading.Event()
-        self._pause_event.set()  # Start in unpaused state
 
         self.offsets = np.random.uniform(-self.slopeNoise, self.slopeNoise, (4,2))
         self.iter = 0
@@ -128,6 +124,24 @@ class FELIXSimulator(WavefrontSensor):
 
     def setRoi(self, roi):
         # Cache the ROI dimensions so we can trim the detector easily
+        # Check if these are valid for a 512x512 detector
+        width, height, left, top = roi
+        if width <= 0 or height <= 0:
+            print(f"Invalid ROI: Width and height must be strictly positive. Got width={width}, height={height}.")
+            return
+        
+        if left < 0 or top < 0:
+            print(f"Invalid ROI: Top and left coordinates cannot be negative. Got left={left}, top={top}.")
+            return
+        
+        if (left + width) > self.imageSize or (top + height) > self.imageSize:
+            print(
+                f"Invalid ROI: Exceeds detector boundaries. "
+                f"ROI spans X:[{left} to {left + width}], Y:[{top} to {top + height}], "
+                f"but detector size is {self.imageSize}x{self.imageSize}."
+            )
+            return
+        
         super().setRoi(roi)
         return
 
@@ -146,9 +160,15 @@ class FELIXSimulator(WavefrontSensor):
     def setBitDepth(self, bitDepth):
         super().setBitDepth(bitDepth)
         return
+    
+    def takeDark(self):
+        # For simplicity, we won't simulate a separate dark frame. Just return the bias level.
+        dark = np.full((self.roiHeight, self.roiWidth), self.bias, dtype=np.uint16)
+        super().setDark(dark)
+        time.sleep(1e-3)
+        return
 
     def expose(self):
-        self._pause_event.wait()  # Wait if paused
         image = self.makeFelixData().astype(np.uint16)
         h, w = image.shape
         b = self.binning
@@ -158,14 +178,6 @@ class FELIXSimulator(WavefrontSensor):
         self.data = image
         time.sleep(1e-3 + float(self.exposure))
         super().expose()
-        return
-    
-    def pause(self):
-        self._pause_event.clear()
-        return
-
-    def resume(self):
-        self._pause_event.set()
         return
     
     def setLag(self, lag):

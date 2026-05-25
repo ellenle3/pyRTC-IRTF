@@ -60,6 +60,7 @@ class IRTFASMSimulator(WavefrontCorrector):
         # slopes are x then y. Reshape to ((x,y), (x,y), ...)
         xslopes = slopes[:4]
         yslopes = slopes[4:]
+        # Rotate by 45 degrees to match the orientation of the spots on the WFS
         slopes = np.vstack((xslopes, yslopes)).T
         self.simInjectedSlopes.write(slopes)
         return

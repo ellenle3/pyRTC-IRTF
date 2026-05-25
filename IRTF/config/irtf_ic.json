@@ -1,0 +1,46 @@
+{
+    "ports": {
+        "wfs": 10489,
+        "wfc": 10490,
+        "slopes": 10491,
+        "loop": 10492,
+        "tel": 10493
+    },
+    "classes": {
+        "ImakaDM": {
+            "type": "wfc",
+            "class_path": "hardware/ImakaDM.py",
+            "config_path": "hrtc_wfc.yaml"
+        },
+        "IRTFASMSimulator": {
+            "type": "wfc",
+            "class_path": "hardware/DMsim.py",
+            "config_path": "hrtc_wfcsim.yaml"
+        },
+        "FELIXSimulator": {
+            "type": "wfs",
+            "class_path": "hardware/FELIXsim.py",
+            "config_path": "hrtc_wfs_felixsim.yaml"
+        },
+        "AndorWFS": {
+            "type": "wfs",
+            "class_path": "hardware/AndorWFS.py",
+            "config_path": "hrtc_wfs_andor.yaml"
+        },
+        "SlopesProcess": {
+            "type": "slopes",
+            "class_path": "SlopesProcess.py",
+            "config_path": "hrtc_slopes.yaml"
+        },
+        "Loop": {
+            "type": "loop",
+            "class_path": "Loop.py",
+            "config_path": "hrtc_loop.yaml"
+        },
+        "ImakaTelemetry": {
+            "type": "tel",
+            "class_path": "ImakaTelemetry.py",
+            "config_path": "hrtc_tel.yaml"
+        }
+    }
+}
