@@ -9,7 +9,6 @@ import signal
 import sys
 import threading
 import importlib.util
-from IRTF.gui.gui import cleanup
 import pyRTC.utils as utils
 from pyRTC import *
 
@@ -151,7 +150,15 @@ class PyroICSSoft:
 
     def _soft_run(self, component, function, *args):
         func_to_run = getattr(component, function, lambda: -1)
-        return func_to_run(*args)
+        try:
+            result = func_to_run(*args)
+        except TypeError:
+            print(f"Function {function} not found in component {component}, or passed wrong number of arguments.")
+            return -1
+        return result
+
+    def run_no_response(self, component_type, function, *args):
+        pass # client sends command and does not wait for response; useful for telemetry
 
     def run(self, component_type, function, *args):
         if component_type not in self.components:
@@ -223,7 +230,7 @@ class PyroICSSoft:
 
         # Start again
         for key, val in self.components.items():
-            if self.is_connected(key):
+            if self.is_connected(key) and key != "wfs":  # Do not restart the WFS, make the user to it manually
                 self._soft_run(val["instance"], "start")
 
         return result

@@ -19,6 +19,15 @@ BASE_DIR = Path(__file__).parent
 IPC_PATH = BASE_DIR / "ipc_files.json"
 MAX_LOG_LINES = 100  # max length of console log
 
+# hard coded to work with FELIX camera (and other IRTF Andor cameras)
+# see the method AndorWFS.showAvailableReadout(), which provides this dict
+ANDOR_CAPABILITIES = { 
+            'HSSpeeds': [17.0, 10.0, 5.0, 1.0],
+            'VSSpeeds': [0.3, 0.5, 0.9, 1.7, 3.3],
+            'VSSpeedRecommended': {'index': 4, 'speed': 3.3},
+            'AmpModes': ['ElectronMultiplying', 'Conventional']
+        }
+
 class MainWindow(QWidget):
     def __init__(self):
         signal.signal(signal.SIGINT, self._on_ctrl_c) # Allow Ctrl-C to quit the app in terminal
@@ -99,7 +108,7 @@ class MainWindow(QWidget):
         self.gridIXON_ReadOut_combo.currentTextChanged.connect(self.on_ixon_readout_changed)
         self.gridIXON_PreampGain_combo.currentTextChanged.connect(self.on_ixon_preampgain_changed)
         self.gridIXON_VSS_combo.currentTextChanged.connect(self.on_ixon_vss_changed)
-        self.gridIXON_ROI_button.clicked.connect(self.on_ixon_roi_clicked)
+        #self.gridIXON_ROI_button.clicked.connect(self.on_ixon_roi_clicked)
         self.gridIXON_dark_button.clicked.connect(self.on_dark_clicked)
         
         # SimCam controls
@@ -110,7 +119,7 @@ class MainWindow(QWidget):
         self.gridSimCam_itime_entry.returnPressed.connect(lambda: self.on_itime_return_pressed(self.gridSimCam_itime_entry))
         self.gridSimCam_Array_button.clicked.connect(lambda: self.on_array_clicked(self.gridSimCam_Array_entry))
         self.gridSimCam_XYbinning_combo.currentTextChanged.connect(lambda: self.on_xybinning_changed(self.gridSimCam_XYbinning_combo))
-        self.gridSimCam_ROI_button.clicked.connect(self.on_simcam_roi_clicked)
+        #self.gridSimCam_ROI_button.clicked.connect(self.on_simcam_roi_clicked)
         self.gridSimCam_Amplitude_entry.returnPressed.connect(self.on_simcam_amplitude_return_pressed)
         self.gridSimCam_SlopeNoise_entry.returnPressed.connect(self.on_simcam_slope_noise_return_pressed)
         self.gridSimCam_lag_entry.returnPressed.connect(self.on_simcam_lag_return_pressed)
@@ -178,9 +187,21 @@ class MainWindow(QWidget):
             
     def on_panic_clicked(self):
         self.log("PANIC! Opening the loop and resetting the system!", color="red")
+        # Add function to ICS to abort everything and open the loop immediately...?
+        # how to implement htis
+        if self.ics.is_connected("loop"):
+            self.ics.run("loop", "setGain", 0)
+            self.ics.run("loop", "stop")
+        else:
+            self.log("Loop is not running...?", "orange")
+        if self.ics.is_connected("wfc"):
+            self.ics.run("wfc", "flatten")
+        if self.ics.is_connected("wfs"):
+            self.ics.run("wfs", "stop")
     
     def on_shutdown_clicked(self):
-        self.log("Shutting down all hardware components and exiting...")
+        self.log("Shutting down all hardware components")
+        self.ics.shutdown_all()
 
     # -----------------
     # Status panel data
@@ -237,10 +258,10 @@ class MainWindow(QWidget):
                 self.log("Andor SDK not found.", "red")
                 self.tabControls_AO_Camera.setCurrentIndex(0)  # switch back to OFF tab
                 return
-            self.worker = IXONInitWorker("IXON", self._start_ixon, self._set_ixon_defaults)
+            self.worker = IXONInitWorker("IXON", self._set_ixon_defaults)
             self.worker.log_signal.connect(self.log)
             self.worker.status_cam_signal.connect(self.update_status_camera)
-            self.worker.done.connect(self._enable_window)  # re-enable window when done
+            self.worker.done.connect(self._set_ixon_defaults_and_enable)  # re-enable window when done
             self._disable_window()
             self.worker.start()
 
@@ -259,12 +280,17 @@ class MainWindow(QWidget):
         self.setEnabled(False)
         self.gridPanelButtons_PANIC_button.setEnabled(True)  # Emergency open loop always available
 
-    def _enable_window(self):
+    def _set_ixon_defaults_and_enable(self):
+        # changes to the GUI must happen in the main thread to avoid seg fault,
+        # so wait until afte the worker is done to set options and defaults
+        self._set_ixon_capabilities()
+        self._set_ixon_defaults()
+        self.is_IXON_enabled = True
         self.setEnabled(True)
     
     def _set_simcam_defaults_and_enable(self):
         self._set_simcam_defaults()
-        self._enable_window()
+        self.setEnabled(True)
 
     # Shared functions
 
@@ -299,27 +325,15 @@ class MainWindow(QWidget):
         self.log("Taking dark")
         self.ics.run("wfs", "takeDark")
 
-    # IXON
-    def _start_ixon(self):
-        self.ics.launch("AndorWFS")
-        self.ics.run("wfs", "stop")
-
-        # Initialize readout options - HARD CODED TO WORK WITH FELIX LAB CAMERA.
-        # Run AndorWFS.showAvailableReadout() in soft RTC mode to get this output.
-        capabilities = {  
-            'HSSpeeds': [17.0, 10.0, 5.0, 1.0],
-            'VSSpeeds': [0.3, 0.5, 0.9, 1.7, 3.3],
-            'VSSpeedRecommended': {'index': 4, 'speed': 3.3},
-            'AmpModes': ['ElectronMultiplying', 'Conventional']
-        }
-    
-        # Make the capabilities list with the same convention as the Felix XUI:
-        # amplifier_channel_hsspeed
-        cvidx = capabilities["AmpModes"].index("Conventional")
+    # IXON    
+    def _set_ixon_capabilities(self):
+        # Make the read out capabilities list with the same convention as the Felix
+        # XUI: amplifier_channel_hsspeed
+        cvidx = ANDOR_CAPABILITIES["AmpModes"].index("Conventional")
 
         self.IXON_ReadOut_Options = {}
         self.gridIXON_ReadOut_combo.clear()
-        for hi, hsspeed in enumerate(capabilities["HSSpeeds"]):
+        for hi, hsspeed in enumerate(ANDOR_CAPABILITIES["HSSpeeds"]):
             hsspeed_str = str( int(hsspeed) ).zfill(2)
             key = f"CV_16bit_{hsspeed_str}MHz"
             self.IXON_ReadOut_Options[key] = {
@@ -327,11 +341,11 @@ class MainWindow(QWidget):
                 "ADChannel": 0, # 16 bit
                 "amplifier": cvidx # only use CV
             }
-            self.gridIXON_ReadOut_combo.addItem([key])
+            self.gridIXON_ReadOut_combo.addItem(key)
 
         self.IXON_VSSpeed_Options = {}
         self.gridIXON_VSS_combo.clear()
-        for vi, vsspeed in enumerate(capabilities["VSSpeeds"]):
+        for vi, vsspeed in enumerate(ANDOR_CAPABILITIES["VSSpeeds"]):
             vsspeed_str = str( int(vsspeed*1000) )
             key = f"{vsspeed_str}ns"
             self.IXON_VSSpeed_Options[key] = {
@@ -339,23 +353,23 @@ class MainWindow(QWidget):
             }
             self.gridIXON_VSS_combo.addItem(key)
 
-        self._set_ixon_defaults()
-        self.is_IXON_enabled = True
+        # Not implemented - set to 1 option
+        self.gridIXON_PreampGain_combo.addItem("1")
 
     def _set_ixon_defaults(self):
-        self.gridIXON_itime_entry.setText("5.0")
+        self.gridIXON_itime_entry.setText("1.0")
         self.on_itime_return_pressed(self.gridIXON_itime_entry)
         self.gridIXON_coadd_entry.setText("1")
         self.on_ixon_coadd_return_pressed()
         if self.old_array_input is not None:
             array_input = self.old_array_input
         else:
-            array_input = "512 512 0 0"
+            array_input = "512 512 1 1"
         self.gridIXON_Array_entry.setText(array_input)
         self.on_array_clicked(self.gridIXON_Array_entry)
         self.gridIXON_XYbinning_combo.setCurrentIndex(0)  # set to 1
         self.on_xybinning_changed(self.gridIXON_XYbinning_combo)
-        self.gridIXON_ReadOut_combo.setCurrentindex(0)  # 17 MHz CV 16 bit
+        self.gridIXON_ReadOut_combo.setCurrentIndex(0)  # 17 MHz CV 16 bit
         self.on_ixon_readout_changed()
         self.gridIXON_PreampGain_combo.setCurrentIndex(0)  # set to 1
         self.on_ixon_preampgain_changed()
@@ -364,7 +378,7 @@ class MainWindow(QWidget):
 
     def on_ixon_coadd_return_pressed(self):
         coadds = int(self.gridIXON_coadd_entry.text())
-        self.ics.run("wfs", "setCoadds", coadds)
+        self.ics.set("wfs", "coadds", coadds)
         self.log("coadds " + str(coadds))
 
     def on_ixon_readout_changed(self):
@@ -374,16 +388,13 @@ class MainWindow(QWidget):
         self.log("Readout mode " + key)
 
     def on_ixon_preampgain_changed(self):
-        pass
+        self.log("Preamp gain not implemented yet. (sorry)", "gray")
 
     def on_ixon_vss_changed(self):
         key = self.gridIXON_VSS_combo.currentText()
-        options = self.IXON_VSSpeed_Options[key]
-        self.ics.run("wfs", "setVSSpeed", options["vi"])
+        vi = self.IXON_VSSpeed_Options[key]["vi"]
+        self.ics.run("wfs", "setVSSpeed", vi)
         self.log("Vertical shift speed " + key)
-
-    def on_ixon_roi_clicked(self):
-        pass
     
     # SimCam
     def _set_simcam_defaults(self):
@@ -590,25 +601,6 @@ class MainWindow(QWidget):
         self.is_shutdown_on_close = checked
         self.log(f"Shutdown on close {'enabled' if checked else 'disabled'}")
 
-
-class IXONInitWorker(QThread):
-    log_signal = pyqtSignal(str, str)
-    status_cam_signal = pyqtSignal(str)
-    done = pyqtSignal(str)  # pass back name so caller knows which finished
-
-    def __init__(self, name, init_function, log=None):
-        super().__init__()
-        self.name = name
-        self.init_function = init_function
-        self.log = log
-
-    def run(self):
-        ics = get_ics_proxy()  # New proxy has to go in the run thread, not main
-        self.status_cam_signal.emit("Initializing IXON")
-        self.log_signal.emit("Connecting to Andor camera...", "blue")
-        self.init_function()
-        self.status_cam_signal.emit("Ready for acquisition")
-        self.done.emit(self.name)
     
 def cleanup():
     app.quit()

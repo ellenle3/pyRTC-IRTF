@@ -8,12 +8,31 @@ import sys
 import queue
 import threading
 from PyQt6.QtCore import QTimer, QEvent, QThread, pyqtSignal, QCoreApplication
+import Pyro5
 from Pyro5.errors import CommunicationError
 
 Pyro5.configure.COMMTIMEOUT = 2.0
 
-from IRTF.gui.pyroics import get_ics_proxy
+from pyroics_soft import get_ics_proxy
 
+class IXONInitWorker(QThread):
+    log_signal = pyqtSignal(str, str)
+    status_cam_signal = pyqtSignal(str)
+    done = pyqtSignal(str)  # pass back name so caller knows which finished
+
+    def __init__(self, name, log=None):
+        super().__init__()
+        self.name = name
+        self.log = log
+
+    def run(self):
+        ics = get_ics_proxy()  # New proxy has to go in the run thread, not main
+        self.status_cam_signal.emit("Initializing IXON")
+        self.log_signal.emit("Connecting to Andor camera...", "blue")
+        ics.launch("AndorWFS")
+        ics.run("wfs", "stop")
+        self.status_cam_signal.emit("Ready for acquisition")
+        self.done.emit(self.name)
 
 class SimCamInitWorker(QThread):
     log_signal = pyqtSignal(str, str)
