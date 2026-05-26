@@ -13,7 +13,7 @@ from Pyro5.errors import CommunicationError
 
 Pyro5.configure.COMMTIMEOUT = 2.0
 
-from pyroics_soft import get_ics_proxy
+from pyroics import get_ics_proxy
 
 class IXONInitWorker(QThread):
     log_signal = pyqtSignal(str, str)

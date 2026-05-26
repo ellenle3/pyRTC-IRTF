@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 #from IRTF.gui.pyrtcgui_setup import Ui_pyrtcGUI
 from subwindows import *
 from workers import *
+from gui_utils import *
 
 # Get the directory of the current Python file
 BASE_DIR = Path(__file__).parent
@@ -34,7 +35,7 @@ class MainWindow(QWidget):
     def __init__(self):
         signal.signal(signal.SIGINT, self._on_ctrl_c) # Allow Ctrl-C to quit the app in terminal
         super().__init__()
-        uic.loadUi(os.path.join(BASE_DIR, "pyrtc_felix_control.ui"), self)
+        uic.loadUi(os.path.join(BASE_DIR, "qtui", "pyrtc_felix_control.ui"), self)
         # iconpath = "tropius.icns"
         # self.setWindowIcon(QIcon(str(iconpath)))
 
@@ -121,6 +122,7 @@ class MainWindow(QWidget):
         # IXON controls
         self.gridIXON_itime_entry.setValidator(QDoubleValidator(0.0, 600.0, 5))  # exposure time between 0 and 600 seconds with 5 decimal places
         self.gridIXON_coadd_entry.setValidator(QIntValidator(1, 1000))
+        self.gridIXON_Array_entry.setValidator(validator_4int()) # 4 integers separated by spaces: width height left top
         self.gridIXON_itime_entry.returnPressed.connect(lambda: self.on_itime_return_pressed(self.gridIXON_itime_entry))
         self.gridIXON_coadd_entry.returnPressed.connect(self.on_ixon_coadd_return_pressed)
         self.gridIXON_Array_button.clicked.connect(lambda: self.on_array_clicked(self.gridIXON_Array_entry))
@@ -128,18 +130,19 @@ class MainWindow(QWidget):
         self.gridIXON_ReadOut_combo.currentTextChanged.connect(self.on_ixon_readout_changed)
         self.gridIXON_PreampGain_combo.currentTextChanged.connect(self.on_ixon_preampgain_changed)
         self.gridIXON_VSS_combo.currentTextChanged.connect(self.on_ixon_vss_changed)
-        #self.gridIXON_ROI_button.clicked.connect(self.on_ixon_roi_clicked)
+        self.gridIXON_ROI_button.clicked.connect(lambda: self.on_roi_clicked(self.gridIXON_Array_entry))
         self.gridIXON_dark_button.clicked.connect(self.on_dark_clicked)
         
         # SimCam controls
         self.gridSimCam_itime_entry.setValidator(QDoubleValidator(0.0, 30.0, 5)) 
+        self.gridSimCam_Array_entry.setValidator(validator_4int())
         self.gridSimCam_Amplitude_entry.setValidator(QDoubleValidator(0.0, 100, 2))
         self.gridSimCam_SlopeNoise_entry.setValidator(QDoubleValidator(0.0, 2, 2))
         self.gridSimCam_lag_entry.setValidator(QIntValidator(0, 100))
         self.gridSimCam_itime_entry.returnPressed.connect(lambda: self.on_itime_return_pressed(self.gridSimCam_itime_entry))
         self.gridSimCam_Array_button.clicked.connect(lambda: self.on_array_clicked(self.gridSimCam_Array_entry))
         self.gridSimCam_XYbinning_combo.currentTextChanged.connect(lambda: self.on_xybinning_changed(self.gridSimCam_XYbinning_combo))
-        #self.gridSimCam_ROI_button.clicked.connect(self.on_simcam_roi_clicked)
+        self.gridSimCam_ROI_button.clicked.connect(lambda: self.on_roi_clicked(self.gridSimCam_Array_entry))
         self.gridSimCam_Amplitude_entry.returnPressed.connect(self.on_simcam_amplitude_return_pressed)
         self.gridSimCam_SlopeNoise_entry.returnPressed.connect(self.on_simcam_slope_noise_return_pressed)
         self.gridSimCam_lag_entry.returnPressed.connect(self.on_simcam_lag_return_pressed)
@@ -313,28 +316,43 @@ class MainWindow(QWidget):
         self.setEnabled(True)
 
     # Shared functions
-
     def on_itime_return_pressed(self, entry):
         texpos = float(entry.text())
         self.ics.run("wfs", "setExposure", texpos)
         self.log("itime " + str(texpos))
 
     def on_array_clicked(self, entry):
-        values = [int(x) for x in entry.text().split()]
-        if len(values) != 4:
-            self.log("ROI must be defined by 4 integers: width, height, left, top", color="red")
+        roi = [int(x) for x in entry.text().split()]
+        xmax = self.ics.get("wfs", "xmax")
+        ymax = self.ics.get("wfs", "ymax")
+        binning = self.ics.get("wfs", "binning")
+        is_valid, error_message = is_roi_valid(xmax, ymax, binning, *roi)
+        if not is_valid:
+            self.log(f"Invalid ROI: {error_message}", color="red")
             return
-        width, height, left, top = values
-        if width <= 0 or height <= 0:
-            self.log("Width and height must be positive integers", color="red")
-            return
-        self.log("Resetting shared memories as data size has changed. One moment...", "orange")
-        ret = self.ics.run("wfs", "setRoi", (width, height, left, top))
+        roi = tuple(roi)
+        ret = self.ics.run("wfs", "setRoi", roi)
         if ret == -1:
             self.log("Error setting ROI. Please check the values and try again.", color="red")
+            return
+        self.old_array_input = entry.text()  # to recycle if the camera is turned on and off
+        self.log("ROI " + entry.text())
+
+    def on_roi_clicked(self, entry):
+        self.log("Opening ROI selector...")
+        
+        dialog = ROIWindow(self)
+        result = dialog.exec()
+                
+        # FIX 2: Always restart the camera loop when the dialog closes,
+        # regardless of whether they pressed Done or Cancel.
+        self.ics.run("wfs", "start")
+
+        if result == QDialog.DialogCode.Accepted:
+            entry.setText(dialog.roi_to_main_window)
+            self.on_array_clicked(entry)
         else:
-            self.old_array_input = entry.text()  # to recycle if the camera is turned on and off
-            self.log("ROI set to " + entry.text())
+            self.log("ROI selection canceled.")
 
     def on_xybinning_changed(self, combo):
         binning = int(combo.currentText())
@@ -423,7 +441,7 @@ class MainWindow(QWidget):
         if self.old_array_input is not None:
             array_input = self.old_array_input
         else:
-            array_input = "512 512 0 0"
+            array_input = "512 512 1 1"
         self.gridSimCam_Array_entry.setText(array_input)
         self.on_array_clicked(self.gridSimCam_Array_entry)
         self.gridSimCam_XYbinning_combo.setCurrentIndex(0)  # set to 1
@@ -435,9 +453,6 @@ class MainWindow(QWidget):
         self.gridSimCam_lag_entry.setText("0")
         self.on_simcam_lag_return_pressed()
         
-    def on_simcam_roi_clicked(self):
-        pass
-
     def on_simcam_amplitude_return_pressed(self):
         amplitude = float(self.gridSimCam_Amplitude_entry.text())
         self.ics.run("wfs", "setAmplitude", amplitude)

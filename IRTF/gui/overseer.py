@@ -1,7 +1,7 @@
 
 import subprocess
 import numpy as np
-from pyroics_soft import get_ics_proxy
+from pyroics import get_ics_proxy
 
 PLATE_SCALE = 0.16 # "/pixel
 POS_ANGLE = 2.3    # degrees, align image to sky coordinates

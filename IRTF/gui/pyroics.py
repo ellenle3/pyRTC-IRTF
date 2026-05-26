@@ -1,9 +1,14 @@
+"""Uses soft RTC mode to run all components in a single process. This works up
+to frame rates of 190 Hz. It's easier to debug and does not slow down when running
+commands that take many frames to execute (e.g., takeRefSlopes).
+"""
 import Pyro5.api
 import json
 import os
 import signal
 import sys
 import threading
+import importlib.util
 import pyRTC.utils as utils
 from pyRTC import *
 
@@ -16,8 +21,6 @@ from pathlib import Path
 CONFIG_PATH = Path(__file__).parent.parent / "config"
 ICS_URI_PATH = CONFIG_PATH / "pyrtc_uri.txt"
 PYRTC_CLASS_PATH = Path(__file__).parent.parent.parent / "pyRTC"
-
-LAUNCHER_TIMEOUT = 10.0  # seconds to wait for a component to launch before timing out
 
 def get_ics_proxy():
     # Each thread will need its own proxy for the ICS.
@@ -33,7 +36,7 @@ def get_ics_proxy():
     return proxy
 
 @Pyro5.api.expose
-class PyroICS:
+class PyroICSSoft:
     """Orchestrates connections to all components. The GUI and other Python
     interfaces should only interact with components through this class, which
     will be exposed through Pyro. This allows the hardware to keep running even
@@ -45,17 +48,20 @@ class PyroICS:
         with open(CONFIG_PATH / "irtf_ic.json") as f:
             config = json.load(f)
             self.launchers = config["classes"]
-            self.ports = config["ports"]
         
         self.components = {
-            "wfc": {"instance": None, "class": None},
-            "wfs": {"instance": None, "class": None},
-            "slopes": {"instance": None, "class": None},
-            "loop": {"instance": None, "class": None},
-            "tel": {"instance": None, "class": None}
+            "wfc": {                # For soft RTC, component type *must* match the key at the top of the config file
+                "instance": None,   # Store launcher object
+                "class": None       # Class name of the component
+            },
+            "wfs": { "instance": None, "class": None },
+            "slopes": { "instance": None, "class": None },
+            "loop": { "instance": None, "class": None },
+            "tel": { "instance": None, "class": None },
         }
 
-        # Create an independent Reentrant Lock for each component type
+        # Create an independent Reentrant Lock for each component type to
+        # prevent multiple clients from trying to access the same component
         self._locks = {ctype: threading.RLock() for ctype in self.components}
 
         self.errors = {
@@ -81,18 +87,17 @@ class PyroICS:
             return 4
         component_type = self.launchers[component_class]["type"]
         
-        # Serialize launching for this specific component type
+        # Guard component creation
         with self._locks[component_type]:
             if self.is_connected(component_type):
                 return 2
             
             hardware_class = PYRTC_CLASS_PATH / self.launchers[component_class]["class_path"]
             config_file = CONFIG_PATH / self.launchers[component_class]["config_path"]
-            port = self.ports[component_type]
-            launcher = check_config_and_make_launcher(hardware_class, config_file, port)                                    
-            launcher.launch()
+            conf = utils.read_yaml_file(config_file)[component_type]
+            instance = instantiate_component(component_class, hardware_class, conf)                                    
 
-            self.components[component_type]["instance"] = launcher
+            self.components[component_type]["instance"] = instance
             self.components[component_type]["class"] = component_class
             return 0
         
@@ -132,39 +137,53 @@ class PyroICS:
             return 0
     
     def shutdown_all(self):
-        # Acquire all locks in a predictable alphabetical order to prevent cross-client deadlocks
+        # To safely lock everything without deadlocking, acquire all locks in a fixed alphabetical order
         all_locks = [self._locks[k] for k in sorted(self._locks.keys())]
-        for lock in all_locks:
+        for lock in all_locks: 
             lock.acquire()
         try:
             for name in self.components:
-                self.shutdown(name)  # Safe nested acquire because of RLock
+                self.shutdown(name) # Safe because of RLock
         finally:
-            for lock in reversed(all_locks):
+            for lock in reversed(all_locks): 
                 lock.release()
-        
+
+    def _soft_run(self, component, function, *args):
+        func_to_run = getattr(component, function, lambda: -1)
+        try:
+            result = func_to_run(*args)
+        except TypeError:
+            print(f"Function {function} not found in component {component}, or passed wrong number of arguments.")
+            return -1
+        return result
+
+    @Pyro5.api.oneway
+    def run_no_wait(self, component_type, function, *args):
+        self.run(component_type, function, *args)
+
     def run(self, component_type, function, *args):
         if component_type not in self.components:
             return 4
             
-        # Special Multi-Component Modification Case
+        # Special Case: Global State Modification
         if function in ["setRoi", "setBinning"] and component_type == "wfs":
-            # Collect all locks alphabetically since run_and_reset_wfs_shms cascades across components
+            # This method acts on multiple components, so it must capture ALL locks 
+            # in a predictable sorted order to prevent cross-client deadlocks.
             all_locks = [self._locks[k] for k in sorted(self._locks.keys())]
-            for lock in all_locks:
+            for lock in all_locks: 
                 lock.acquire()
             try:
                 return self.run_and_reset_wfs_shms(function, *args)
             finally:
-                for lock in reversed(all_locks):
+                for lock in reversed(all_locks): 
                     lock.release()
 
-        # Normal isolated execution
+        # Normal Case: Single component target
         with self._locks[component_type]:
             component = self.components[component_type]["instance"]
             if component is None:
                 return 3
-            return component.run(function, *args)
+            return self._soft_run(component, function, *args)
     
     def get(self, component_type, property_name):
         if component_type not in self.components:
@@ -173,7 +192,11 @@ class PyroICS:
             component = self.components[component_type]["instance"]
             if component is None:
                 return 3
-            return component.getProperty(property_name)
+            result = getattr(component, property_name, -1)
+            # convert to list if it's a numpy array for Pyro serialization
+            if isinstance(result, np.ndarray):
+                return result.tolist()
+            return result
     
     def set(self, component_type, property_name, value):
         if component_type not in self.components:
@@ -182,7 +205,7 @@ class PyroICS:
             component = self.components[component_type]["instance"]
             if component is None:
                 return 3
-            component.setProperty(property_name, value)
+            setattr(component, property_name, value)
             return 0
     
     def get_component_class(self, component_type):
@@ -196,22 +219,24 @@ class PyroICS:
         for ctype, val in self.components.items():
             if self.is_connected(ctype):
                 if ctype == "tel":
-                    val["instance"].run("cancelRecording")  # stop telemetry stream if it's running
-                val["instance"].run("stop")
+                    self._soft_run(val["instance"], "cancelRecording")  # stop telemetry stream if it's running
+                self._soft_run(val["instance"], "stop")
 
         # Set the WFS binning or ROI
         self.reset_wfs_shms()  # clear the WFS SHMs before changing the size to prevent issues with mismatched sizes
-        result = self.components["wfs"]["instance"].run(function, *args)
+        result = self._soft_run(self.components["wfs"]["instance"], function, *args)
 
         # Reset the WFS SHMs according to the new size
-        self.components["wfs"]["instance"].run("initWFSMemory")  # must do this first
+        self._soft_run(self.components["wfs"]["instance"], "initWFSMemory")  # must do this first
         if self.is_connected("slopes"):
-            self.components["slopes"]["instance"].run("initWFSMemoryFelix")  # slopes depend on wfs size
+            self._soft_run(self.components["slopes"]["instance"], "initWFSMemoryFelix")  # slopes depend on wfs size
+        # Leave other components - loop does not access the WFS SHM and telemetry
+        # reinits it every time it starts a new recording
 
         # Start again
         for key, val in self.components.items():
-            if self.is_connected(key):
-                val["instance"].run("start")
+            if self.is_connected(key) and key != "wfs":  # Do not restart the WFS, make the user to it manually
+                self._soft_run(val["instance"], "start")
 
         return result
     
@@ -226,24 +251,31 @@ class PyroICS:
         # Resets all shared memories dependent on WFS image size
         self.reset_shms(["wfs", "wfsRaw", "subApMasks"])
 
-def check_config_and_make_launcher(hardware_class, config, port):
-    if not os.path.exists(hardware_class):
-        raise FileNotFoundError(f"Hardware class file {hardware_class} not found.")
-    if not os.path.exists(config):
-        raise FileNotFoundError(f"Config file {config} not found.")
-    return hardwareLauncher(hardware_class, config, port, timeout=LAUNCHER_TIMEOUT)
+def instantiate_component(component_class, class_path, *args, **kwargs):
+    spec = importlib.util.spec_from_file_location(component_class, class_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    cls = getattr(module, component_class)
+    return cls(*args, **kwargs)
 
 def try_shutdown(component):
     if component is None:
         print("Component is None, skipping shutdown.")
         return
     try:
-        component.shutdown()
+        component.stop()
+        del component
     except AttributeError:
         print(f"Component {component} cannot be shut down.")
 
+def reset_shms():
+    shm_names = ["wfs", "wfsRaw", "wfc", "wfc2D", "wfcShape", "signal", "signal2D"
+                 "psfShort", "psfLong", "wfsInfo", "loop", "refSlopes", "subApMasks",
+                 "cmat", "m2c", "simInjectedSlopes"] #list of SHMs to reset
+    clear_shms(shm_names)
+
 if __name__ == "__main__":
-    ics = PyroICS()
+    ics = PyroICSSoft()
     daemon = Pyro5.api.Daemon()
     uri = daemon.register(ics, objectId="pyrtc_soft.ics")
     with open(ICS_URI_PATH, "w") as f:

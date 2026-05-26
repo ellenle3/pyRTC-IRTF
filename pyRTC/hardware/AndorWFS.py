@@ -52,6 +52,7 @@ class AndorWFS(WavefrontSensor):
 
         self.sdk.PrepareAcquisition()
         self.sdk.StartAcquisition()
+        ret, xmax, ymax = self.sdk.GetDetector()
         
         self.downsampledImage = None
         if "bitDepth" in conf:
@@ -60,8 +61,7 @@ class AndorWFS(WavefrontSensor):
         if "top" in conf and "left" in conf and "width" in conf and "height" in conf:
             roi=[conf["width"],conf["height"],conf["left"],conf["top"]]
         else:
-            ret, xsize, ysize = self.sdk.GetDetector()
-            roi = [xsize, ysize, 1, 1]  # default to full frame with no binning
+            roi = [xmax, ymax, 1, 1]  # default to full frame with no binning
         self.setRoi(roi)
         
         if "binning" in conf:

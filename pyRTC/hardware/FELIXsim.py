@@ -30,6 +30,8 @@ class FELIXSimulator(WavefrontSensor):
 
         # --- NEW: Read detector size and center coordinate from config ---
         self.imageSize = conf.get("imageSize", 512)
+        self.xmax = self.imageSize
+        self.ymax = self.imageSize
         # Default the center coordinate to the middle of the detector
         self.spotCenter = conf.get("spotCenter", [self.imageSize // 2, self.imageSize // 2])
         
@@ -116,8 +118,8 @@ class FELIXSimulator(WavefrontSensor):
         
         # --- NEW: Trim off the array to simulate the applied ROI ---
         trimmed_image = spots_all[
-            self.roiTop : self.roiTop + self.roiHeight,
-            self.roiLeft : self.roiLeft + self.roiWidth
+            self.roiTop - 1 : self.roiTop + self.roiHeight - 1,
+            self.roiLeft - 1 : self.roiLeft + self.roiWidth - 1
         ]
         
         return trimmed_image
@@ -130,14 +132,14 @@ class FELIXSimulator(WavefrontSensor):
             print(f"Invalid ROI: Width and height must be strictly positive. Got width={width}, height={height}.")
             return
         
-        if left < 0 or top < 0:
-            print(f"Invalid ROI: Top and left coordinates cannot be negative. Got left={left}, top={top}.")
+        if left < 1 or top < 1:
+            print(f"Invalid ROI: Top and left coordinates must be positive. Got left={left}, top={top}.")
             return
         
-        if (left + width) > self.imageSize or (top + height) > self.imageSize:
+        if (left + width - 1) > self.imageSize or (top + height - 1) > self.imageSize:
             print(
                 f"Invalid ROI: Exceeds detector boundaries. "
-                f"ROI spans X:[{left} to {left + width}], Y:[{top} to {top + height}], "
+                f"ROI spans X:[{left} to {left + width - 1}], Y:[{top} to {top + height - 1}], "
                 f"but detector size is {self.imageSize}x{self.imageSize}."
             )
             return
