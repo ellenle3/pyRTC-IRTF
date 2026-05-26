@@ -239,12 +239,14 @@ class ROIWindow(QDialog):
         self.binning = self.ics.get("wfs", "binning")
         self.xmax = self.ics.get("wfs", "xmax")     # max ROI sizes
         self.ymax = self.ics.get("wfs", "ymax")
+        self.mask_rotation = 50  # hard coded for Felix...
 
         self.wfs_shm, self.image_shape, self.image_dtype = initExistingShm("wfs")
         image = self.wfs_shm.read_noblock(SAFE=True, GPU=False)
-        # Pad to full frame, filling in zeros wherever is not covered by the 
-        # current ROI
-        image = pad_roi_to_full_frame(image, self.xmax, self.ymax, self.binning, *self.init_roi)
+        # Pad to full frame, filling in regions not covered by current ROI
+        fill_value = np.nanmin(image)  # image min rather than zeros for imshow color scale
+        image = pad_roi_to_full_frame(image, self.xmax, self.ymax, self.binning,
+                                      *self.init_roi, fill_value=fill_value)
         
         # Information that the main window will read
         self.last_valid_roi = []
@@ -254,10 +256,15 @@ class ROIWindow(QDialog):
         self._set_roi_defaults()     # Set the above params
         self._set_masks_defaults()
 
+        # Include the mask UI elements and validation function in the link
         self.roi_mpl.link_window_data(
             self.gridROI_size_width_entry, 
             self.gridROI_size_pos_entry,
-            self.binning
+            self.binning,
+            self.gridMasks_center_entry,
+            self.gridMasks_size_combo,
+            is_masks_valid,
+            self.mask_rotation
         )
         self.roi_mpl.set_image(image)
         self.roi_mpl.draw_roi_from_text()
@@ -320,21 +327,22 @@ class ROIWindow(QDialog):
         except ValueError:
             pass
 
-    # Subap ask controls
+    # Subap mask controls
     def on_masks_size_changed(self):
-        size = int(self.gridMasks_size_combo.currentText())
-        self.subapmasks_size = size
-        self.roi_mpl.update_subap_masks(self.subapmasks_center, self.subapmasks_size)
+        try:
+            size = int(self.gridMasks_size_combo.currentText())
+            self.subapmasks_size = size
+            self.roi_mpl.draw_roi_from_text()
+        except ValueError:
+            pass
 
     def on_masks_center_changed(self):
         try:
-            # validator should prevent this, but just in case... allow graceful
-            # exit of the GUI
             cx, cy = [int(x) for x in self.gridMasks_center_entry.text().split()]
         except ValueError:
             return
         
-        is_valid, error_message = is_masks_valid(cx, cy, self.subapmasks_size,
+        is_valid, error_message = is_masks_valid(self.subapmasks_size, cx, cy,
                                                  self.last_valid_roi[0], self.last_valid_roi[1])
         if not is_valid:
             self.main_window.log(f"Invalid subap mask center: {error_message}", color="red")
@@ -345,9 +353,13 @@ class ROIWindow(QDialog):
             return
         
         self.subapmasks_center = [cx, cy]
-        #self.roi_mpl.update_subap_masks(self.subapmasks_center, self.subapmasks_size)
+        self.roi_mpl.draw_roi_from_text()
     
     # ROI controls
+    def on_reset_masks_clicked(self):
+        self._set_masks_defaults()
+        self.roi_mpl.draw_roi_from_text()
+
     def on_reset_roi_clicked(self):
         self._set_roi_defaults()
         self.roi_mpl.draw_roi_from_text()
@@ -371,7 +383,7 @@ class ROIWindow(QDialog):
             return
         
         self.last_valid_roi = new_roi
-        self.plot_widget.draw_roi_from_text()
+        self.roi_mpl.draw_roi_from_text()  # FIX: updated from self.plot_widget
 
     def on_roipos_text_changed(self):
         entry = self.gridROI_size_pos_entry
@@ -393,12 +405,14 @@ class ROIWindow(QDialog):
             return
         
         self.last_valid_roi = new_roi
-        self.plot_widget.draw_roi_from_text()
+        self.roi_mpl.draw_roi_from_text()  # FIX: updated from self.plot_widget
 
     def on_done_clicked(self):
         try:
             width, height = [int(x) for x in self.gridROI_size_width_entry.text().split()]
             left, top = [int(x) for x in self.gridROI_size_pos_entry.text().split()]
+            mcx, mcy = [int(x) for x in self.gridMasks_center_entry.text().split()]
+            msize = int(self.gridMasks_size_combo.currentText())
         except ValueError:
             self.main_window.log("Cannot save: entry fields contain unparseable values.", color="red")
             return
@@ -409,7 +423,14 @@ class ROIWindow(QDialog):
             self.main_window.log(f"Cannot save invalid ROI: {error_message}", color="red")
             return
 
+        is_m_valid, m_error = is_masks_valid(msize, mcx, mcy, width, height)
+        if not is_m_valid:
+            self.main_window.log(f"Cannot save invalid Mask Configuration: {m_error}", color="red")
+            return
+
         self.roi_to_main_window = f"{width} {height} {left} {top}"
+        self.subapmasks_center = [mcx, mcy]
+        self.subapmasks_size = msize
         self.accept()
 
 class SliderEditLinker:

@@ -54,7 +54,7 @@ def is_roi_valid(xmax, ymax, binning, width, height, left, top):
         return False, f"ROI height {height} must be divisible by binning: {binning}."
     return True, ""
 
-def pad_roi_to_full_frame(image, xmax, ymax, binning, width, height, left, top):
+def pad_roi_to_full_frame(image, xmax, ymax, binning, width, height, left, top, fill_value=0):
     """
     Pad a binned subarray image to full frame size with zeros.
     Input coordinates are in full-frame (unbinned) pixels, 1-based (Andor convention).
@@ -75,7 +75,7 @@ def pad_roi_to_full_frame(image, xmax, ymax, binning, width, height, left, top):
     binned_xmax = xmax // binning
     binned_ymax = ymax // binning
 
-    full_frame = np.zeros((binned_ymax, binned_xmax), dtype=image.dtype)
+    full_frame = np.full((binned_ymax, binned_xmax), fill_value, dtype=image.dtype)
 
     # Convert 1-based full-frame coordinates to 0-based binned coordinates
     row_start = (top - 1) // binning

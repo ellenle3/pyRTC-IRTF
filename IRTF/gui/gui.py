@@ -82,6 +82,11 @@ class MainWindow(QWidget):
 
         }
         self.old_array_input = None  # Store the last ROI in case the camera was toggled on and off
+        self.subap_masks_params = {
+            "size": None,
+            "cx": None,
+            "cy": None,
+        }
 
         self._connect_signals()
         self.tabControls_AO_Camera.setCurrentIndex(0)  # start with everything off
@@ -236,7 +241,7 @@ class MainWindow(QWidget):
     def on_panic_clicked(self):
         self.log("PANIC! Opening the loop and resetting the system!", color="red")
         # Add function to ICS to abort everything and open the loop immediately...?
-        # how to implement htis
+        # how to implement this
         if self.ics.is_connected("loop"):
             self.ics.run("loop", "setGain", 0)
             self.ics.run("loop", "stop")
@@ -368,14 +373,15 @@ class MainWindow(QWidget):
         
         dialog = ROIWindow(self)
         result = dialog.exec()
-                
-        # FIX 2: Always restart the camera loop when the dialog closes,
-        # regardless of whether they pressed Done or Cancel.
-        self.ics.run("wfs", "start")
 
         if result == QDialog.DialogCode.Accepted:
             entry.setText(dialog.roi_to_main_window)
             self.on_array_clicked(entry)
+            self.subap_masks_params = {
+                "size": dialog.subapmasks_size,
+                "cx": dialog.subapmasks_center[0],
+                "cy": dialog.subapmasks_center[1]
+            }
         else:
             self.log("ROI selection canceled.")
 
@@ -545,11 +551,22 @@ class MainWindow(QWidget):
             self.worker.log_signal.connect(self.log)
             self.worker.status_ASM_signal.connect(self.update_status_ASM)
             self.worker.status_loop_signal.connect(self.update_status_loop)
-            self.worker.done.connect(lambda: self.setEnabled(True))  # re-enable window when done
+            self.worker.done.connect(lambda: self._set_loop_defaults_and_enable())  # re-enable window when done
             self._disable_window()
             self.worker.start()
 
         self.AO_last_index = index
+
+    def _set_loop_defaults_and_enable(self):
+        # Create new subap masks if they exist. Slopes process should exist by now.
+        if self.subap_masks_params["size"] is not None:
+            self.ics.set("slopes", "maskSize", self.subap_masks_params["size"])
+        cx = self.subap_masks_params["cx"]
+        cy = self.subap_masks_params["cy"]
+        if cx is not None and cy is not None:
+            self.ics.run("slopes", "makeSubApMasks", cx, cy)
+            
+        self.setEnabled(True)
 
     def on_open_loop_clicked(self):
         self.ics.run("loop", "setGain", 0)
