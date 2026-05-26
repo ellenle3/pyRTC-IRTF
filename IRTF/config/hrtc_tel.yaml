@@ -1,6 +1,7 @@
 tel:
   name: imakatel
-  dataDir: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/data/"
+  #dataDir: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/data/"
+  dataDir: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/data/"
   prefix: "aocb"
   overwrite: False
   numIter: 1000
