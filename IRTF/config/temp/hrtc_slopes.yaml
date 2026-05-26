@@ -1,12 +1,6 @@
 slopes:
   type: felix
   signalType: slopes
-  #subApMasksFile: "/Users/ellenlee/Documents/pyRTC-IRTF/pyRTCView/subaps2x2_64pix.fits" #50 degrees
-  # subApMasksFile: "/Users/ellenlee/Documents/pyRTC-IRTF/pyRTCView/subaps2x2_32pix.fits" #50 degrees
-  # refSlopesFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/felixcal/refSlopes_FELIX.npy"
-  # chopMasksFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/felixcal/masks_itp.fits"
-  subApMasksFile: "/Users/ellenlee/Documents/pyRTC-IRTF/pyRTCView/subaps2x2_64pix.fits" #50 degrees
-  # #subApMasksFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/felixcal/masks_itp_posM.fits"
   #refSlopesFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/refSlopes_FELIX.npy"
   chopMasksFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/masks_itp.fits"
   imageNoise: 20.0

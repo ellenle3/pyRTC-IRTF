@@ -45,6 +45,7 @@ class MainWindow(QWidget):
         self.pyro_worker = PyroQueueWorker()
         self.pyro_worker.start()
         self.ics = AsyncICSProxy(self)
+        # Inside MainWindow.__init__ in gui.py
 
         self.is_shutdown_on_close = False
 
@@ -53,6 +54,14 @@ class MainWindow(QWidget):
         # self.update_status_camera("Disconnected")
         # self.update_status_ASM("Disconnected")
         # self.update_status_loop("Disconnected")
+
+        # if self.ics.is_connected("wfs"):
+        #     # Switch to the tab if already connected.
+        #     wfs_class = self.ics.get_component_class("wfs")
+        #     if wfs_class == "AndorWFS":
+        #         self.tabControls_AO_Camera.setCurrentIndex(1)
+        #     else:
+        #         self.tabControls_AO_Camera.setCurrentIndex(2)
 
         self.ao_cals = {
             "imat": {
@@ -76,7 +85,9 @@ class MainWindow(QWidget):
 
         self._connect_signals()
         self.tabControls_AO_Camera.setCurrentIndex(0)  # start with everything off
+        #self.on_ao_camera_tab_changed(0)
         self.tabLoopParams.setCurrentIndex(0)
+        #self.on_loop_params_tab_changed(0)
     
     def call_ics(self, fn, callback=None, error_callback=None):
         """Funnel all macro requests straight into the secure background thread queue."""
@@ -98,9 +109,23 @@ class MainWindow(QWidget):
     
     def _cleanup(self):
         self.log("Good night!", "blue")
-
         print("Shutting down all components and exiting")
         self.reset_SHMs()
+
+        # # Shut down all threads
+        # if hasattr(self, 'status_worker'):
+        #     self.status_worker.running = False
+        #     self.status_worker.wait()  # Wait for it to exit its loop safely
+            
+        # if hasattr(self, 'pyro_worker'):
+        #     self.pyro_worker._running = False
+        #     # We use terminate() as a fallback if it's completely locked up,
+        #     # but wait() is preferred.
+        #     if not self.pyro_worker.wait(timeout=1000): # wait 1 second max
+        #         self.pyro_worker.terminate() 
+        #         self.pyro_worker.wait()
+
+        # event.accept()
     
     def _on_ctrl_c(self, sig, frame):
         self._cleanup()
@@ -520,7 +545,7 @@ class MainWindow(QWidget):
             self.worker.log_signal.connect(self.log)
             self.worker.status_ASM_signal.connect(self.update_status_ASM)
             self.worker.status_loop_signal.connect(self.update_status_loop)
-            self.worker.done.connect(self._enable_window)  # re-enable window when done
+            self.worker.done.connect(lambda: self.setEnabled(True))  # re-enable window when done
             self._disable_window()
             self.worker.start()
 
@@ -555,10 +580,12 @@ class MainWindow(QWidget):
         self.log("pbsoff not implemented yet", "red")
 
     def on_ncpa_clicked(self):
-        pass
+        window = AOCalsWindow(start_tab=1, parent=self)
+        window.show()
 
     def on_imat_clicked(self):
-        pass
+        window = AOCalsWindow(start_tab=0, parent=self)
+        window.show()
 
     def on_pause_radio_toggled(self, checked):
         if checked:
@@ -639,6 +666,17 @@ class MainWindow(QWidget):
     
 def cleanup():
     app.quit()
+
+def exception_hook(exctype, value, traceback):
+    """Catches any unhandled crashes in the main thread or subwindows 
+    and instantly kills the process tree before it deadlocks.
+    """
+    sys.__excepthook__(exctype, value, traceback)
+    print("\nUncaught exception in GUI thread. Force quitting process tree to prevent zombie lockup...")
+    sys.stdout.flush()
+    os._exit(1) # Severe but necessary to prevent unkillable background processes
+
+sys.excepthook = exception_hook
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

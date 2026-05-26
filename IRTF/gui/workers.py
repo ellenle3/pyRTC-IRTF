@@ -198,17 +198,20 @@ class PyroQueueWorker(QThread):
 
     def submit_blocking_task(self, fn):
         """Submits a task to the queue and waits until it finishes,
-
-        returning the value directly or raising an exception.
+        allowing thread interrupts to bubble up cleanly.
         """
         done_event = threading.Event()
         container = {'result': None, 'exception': None}
         
         self.task_queue.put((fn, done_event, container))
         
-        # Wait right here until the background thread processes the request
-        done_event.wait()
-        
+        done_event.wait()  # Wait until the worker signals completion
+        # Wait in small intervals rather than a hard block so the OS/Python 
+        # can still pass signals (like Ctrl+C) to the main process tree.
+        # while not done_event.wait(timeout=0.1):
+        #     if not QCoreApplication.instance() or not self._running:
+        #         raise RuntimeError("\n\033[91m[GUI FATAL] GUI application is exiting. Aborting background task.\033[0m")
+                
         # If the background thread caught an error, raise it here in the main thread
         if container['exception']:
             raise container['exception']

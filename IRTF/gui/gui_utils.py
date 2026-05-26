@@ -87,6 +87,31 @@ def pad_roi_to_full_frame(image, xmax, ymax, binning, width, height, left, top):
 
     return full_frame
 
+def is_masks_valid(mask_size, cx, cy, roi_width, roi_height):
+    """Check if the subaperture masks defined by center (cx, cy) and size are
+    valid within the bounds of the ROI defined by roi_width and roi_height.
+    Center is relative to the center of the ROI.
+
+    Returns
+    -------
+    bool, str
+        Tuple of (is_valid, error_message). If is_valid is True, error_message will
+        be empty.
+    """
+    if not all(isinstance(x, int) for x in [mask_size, cx, cy, roi_width, roi_height]):
+        return False, "All mask parameters must be integers."
+    if mask_size < 1:
+        return False, "Mask size must be a positive integer."
+    if abs(cx) > roi_width // 2:
+        return False, f"Mask center x {cx} exceeds ROI bounds of ±{roi_width // 2}."
+    if abs(cy) > roi_height // 2:
+        return False, f"Mask center y {cy} exceeds ROI bounds of ±{roi_height // 2}."
+    if mask_size > roi_width:
+        return False, f"Mask size {mask_size} cannot exceed ROI width {roi_width}."
+    if mask_size > roi_height:
+        return False, f"Mask size {mask_size} cannot exceed ROI height {roi_height}."
+    return True, ""
+
 def parse_and_validate_ra(ra_str):
     """Parse RA string hh:mm:ss.ss and return decimal degrees."""
     pattern = r'^(\d{1,2}):(\d{2}):(\d{2}(?:\.\d+)?)$'

@@ -2,6 +2,7 @@ import os
 from PyQt6.QtWidgets import QDialog, QFileDialog
 from PyQt6 import uic
 from PyQt6.QtGui import QIntValidator, QDoubleValidator
+from PyQt6.QtCore import Qt
 
 from pyRTC.Pipeline import initExistingShm
 from gui_utils import *
@@ -11,6 +12,7 @@ from roi_plot_widget import ROIPlotWidget
 BASE_DIR = Path(__file__).parent
 IXON_TEMP_MIN = -120  # same as Felix XUI
 IXON_TEMP_MAX = 20
+ROI_MIN_SIZE = 16  # minimum ROI size to draw subap masks
 
 class IXONControlsWindow(QDialog):
     def __init__(self, start_tab=0, parent=None):
@@ -59,11 +61,11 @@ class AOCalsWindow(QDialog):
         self.tabCals.setCurrentIndex(start_tab)
 
         if not self.ics.is_connected("loop"):
-            self.setEnabled = False
+            self.setEnabled(False)
             self.main_window.log("AO cals disabled - loop is unavailable", color="red")
 
         if not self.ics.is_connected("slopes"):
-            self.setEnabled = False
+            self.setEnabled(False)
             self.main_window.log("AO cals disabled - slopes is unavailable", color="red")
 
         slider_min = -1
@@ -102,13 +104,13 @@ class AOCalsWindow(QDialog):
         basename = Path(filepath).name
         self.gridImat_theor_file.setText(basename) # set gui text to just the filename, not full path
         self.main_window.log(f"Loaded theoretical imat from {filepath}")
-        self.parent.ao_cals["imat"]["theor_file"] = filepath
+        self.main_window.ao_cals["imat"]["theor_file"] = filepath
 
     def update_synth_imat_file(self, filepath):
         basename = Path(filepath).name
         self.gridImat_synth_file.setText(basename) # set gui text to just the filename, not full path
         self.main_window.log(f"Loaded synthetic imat from {filepath}")
-        self.parent.ao_cals["imat"]["synth_file"] = filepath
+        self.main_window.ao_cals["imat"]["synth_file"] = filepath
 
     def on_imat_file_return_pressed(self, is_theor):
         filepath = self.gridImat_theor_file.text()
@@ -127,7 +129,8 @@ class AOCalsWindow(QDialog):
         filepath, _ = QFileDialog.getOpenFileName(parent=self,
                                                   caption="Select theor imat file",
                                                   directory="",
-                                                  filter="npy files (*.npy)")
+                                                  filter="npy files (*.npy)",
+                                                  options=QFileDialog.Option.DontUseNativeDialog)
         if filepath:
             if is_theor:
                 self.update_theor_imat_file(filepath)
@@ -136,17 +139,17 @@ class AOCalsWindow(QDialog):
 
     def on_imat_method_changed(self):
         method = self.gridImatMethod_combo.currentText()
-        self.parent.ao_cals["imat"]["method"] = method
+        self.main_window.ao_cals["imat"]["method"] = method
         self.main_window.log(f"Set imat method to {method}")
 
     def on_imat_pokeAmp_changed(self):
         pokeAmp = float(self.gridImatParams_pokeAmp_entry.text())
-        self.parent.ao_cals["imat"]["pokeAmp"] = pokeAmp
+        self.main_window.ao_cals["imat"]["pokeAmp"] = pokeAmp
         self.main_window.log(f"Set imat poke amplitude to {pokeAmp}")
 
     def on_imat_numItersIM_changed(self):
         numItersIM = int(self.gridImatParams_numItersIM_entry.text())
-        self.parent.ao_cals["imat"]["numItersIM"] = numItersIM
+        self.main_window.ao_cals["imat"]["numItersIM"] = numItersIM
         self.main_window.log(f"Set imat numItersIM to {numItersIM}")
     
     def on_coords_RA_return_pressed(self, is_target):
@@ -160,7 +163,7 @@ class AOCalsWindow(QDialog):
             self.main_window.log(f"Invalid {label} RA: {e}", color="red")
             entry.setText("")
             return
-        self.parent.ao_cals["ncpa"][f"ra_{label}"] = ra
+        self.main_window.ao_cals["ncpa"][f"ra_{label}"] = ra
         self.main_window.log(f"Set {label} RA to {ra}")
 
     def on_coords_dec_return_pressed(self, is_target):
@@ -174,14 +177,14 @@ class AOCalsWindow(QDialog):
             self.main_window.log(f"Invalid {label} Dec: {e}", color="red")
             entry.setText("")
             return
-        self.parent.ao_cals["ncpa"][f"dec_{label}"] = dec
+        self.main_window.ao_cals["ncpa"][f"dec_{label}"] = dec
         self.main_window.log(f"Set {label} Dec to {dec}")
 
     def on_update_auto_offsets_clicked(self):
-        ra_target = self.parent.ao_cals["ncpa"]["ra_target"]
-        dec_target = self.parent.ao_cals["ncpa"]["dec_target"]
-        ra_guide = self.parent.ao_cals["ncpa"]["ra_guide"]
-        dec_guide = self.parent.ao_cals["ncpa"]["dec_guide"]
+        ra_target = self.main_window.ao_cals["ncpa"]["ra_target"]
+        dec_target = self.main_window.ao_cals["ncpa"]["dec_target"]
+        ra_guide = self.main_window.ao_cals["ncpa"]["ra_guide"]
+        dec_guide = self.main_window.ao_cals["ncpa"]["dec_guide"]
 
         try:
             auto_offsets = calc_ncpa_lookup(ra_target, dec_target, ra_guide, dec_guide)
@@ -189,17 +192,17 @@ class AOCalsWindow(QDialog):
             self.main_window.log(f"Failed to parse coordinates.", color="red")
             return
 
-        self.parent.ao_cals["ncpa"]["auto_offsets"] = auto_offsets
+        self.main_window.ao_cals["ncpa"]["auto_offsets"] = auto_offsets
         self.main_window.log(f"Updated auto slope offsets: {auto_offsets:.2f} arcseconds")
 
     def on_update_user_offsets_clicked(self):
         self.values = [linker.value() for linker in self.slider_linkers]
-        self.parent.ao_cals["ncpa"]["user_offsets"] = self.values
+        self.main_window.ao_cals["ncpa"]["user_offsets"] = self.values
         self.main_window.log(f"Updated user slope offsets: {self.values}")
 
     def on_reset_all_offsets_clicked(self):
-        self.parent.ao_cals["ncpa"]["auto_offsets"] = [0, 0, 0, 0, 0, 0, 0]
-        self.parent.ao_cals["ncpa"]["user_offsets"] = [0, 0, 0, 0, 0, 0, 0]
+        self.main_window.ao_cals["ncpa"]["auto_offsets"] = [0, 0, 0, 0, 0, 0, 0]
+        self.main_window.ao_cals["ncpa"]["user_offsets"] = [0, 0, 0, 0, 0, 0, 0]
         for linker in self.slider_linkers:
             linker.set_value(0.0)
         self.main_window.log("Reset all slope offsets to 0")
@@ -228,6 +231,10 @@ class ROIWindow(QDialog):
         left = self.ics.get("wfs", "roiLeft")
         top = self.ics.get("wfs", "roiTop")
         self.init_roi = [width, height, left, top]
+        if width < 16 or height < 16:
+            self.main_window.log(f"Current ROI is too small ({width}x{height}). Must be at least {ROI_MIN_SIZE}x{ROI_MIN_SIZE}", color="red")
+            self.setEnabled(False)
+            return
 
         self.binning = self.ics.get("wfs", "binning")
         self.xmax = self.ics.get("wfs", "xmax")     # max ROI sizes
@@ -235,15 +242,17 @@ class ROIWindow(QDialog):
 
         self.wfs_shm, self.image_shape, self.image_dtype = initExistingShm("wfs")
         image = self.wfs_shm.read_noblock(SAFE=True, GPU=False)
-        print(" GOT IMAGE SHAPE ", image.shape)
-        print(" GOT XMAX, YMAX ", self.xmax, self.ymax)
-        print(" GOT ROI INIT ", self.init_roi)
+        # Pad to full frame, filling in zeros wherever is not covered by the 
+        # current ROI
         image = pad_roi_to_full_frame(image, self.xmax, self.ymax, self.binning, *self.init_roi)
         
-        # Ensure initial state is a true copyable list
-        self.last_valid_roi = list(self.init_roi)
-        self.roi_to_main_window = f"{self.last_valid_roi[0]} {self.last_valid_roi[1]} {self.last_valid_roi[2]} {self.last_valid_roi[3]}"
-        self._set_defaults()
+        # Information that the main window will read
+        self.last_valid_roi = []
+        self.roi_to_main_window = ""
+        self.subapmasks_center = [0, 0] 
+        self.subapmasks_size = 1
+        self._set_roi_defaults()     # Set the above params
+        self._set_masks_defaults()
 
         self.roi_mpl.link_window_data(
             self.gridROI_size_width_entry, 
@@ -253,20 +262,46 @@ class ROIWindow(QDialog):
         self.roi_mpl.set_image(image)
         self.roi_mpl.draw_roi_from_text()
 
-    def _connect_signals(self):
-        self.gridROI_size_width_entry.setValidator(validator_2int()) 
-        self.gridROI_size_pos_entry.setValidator(validator_2int())   
+    def _set_roi_defaults(self):
+        # default size of the roi is either 128 or the max size that fits in the
+        # current ROI (set before this window was opened)
+        default_size = min(128, self.init_roi[0], self.init_roi[1])
+        self.gridROI_size_width_entry.setText(f"{default_size} {default_size}")
         
+        # Put in the center of the image
+        default_left = 1 + (self.xmax - default_size) // 2
+        default_top = 1 + (self.ymax - default_size) // 2
+        self.gridROI_size_pos_entry.setText(f"{default_left} {default_top}")
+
+        # Update params to send to main window
+        self.last_valid_roi = [default_size, default_size, default_left, default_top]
+        self.roi_to_main_window = f"{self.last_valid_roi[0]} {self.last_valid_roi[1]} {self.last_valid_roi[2]} {self.last_valid_roi[3]}"
+
+    def _set_masks_defaults(self):
+        # Center in the middle of the ROI, try to make 64x64 (or whatever fits in the ROI)...
+        # Center coords are relative to the center of the ROI that will be drawn
+        # by the user, not the full frame.
+        self.subapmasks_center = [0, 0]  # cx, cy
+        self.subapmasks_size = min(64, self.init_roi[0], self.init_roi[1])
+        self.gridMasks_center_entry.setText(f"{self.subapmasks_center[0]} {self.subapmasks_center[1]}")
+        self.gridMasks_size_combo.setCurrentText(str(self.subapmasks_size))
+
+    def _connect_signals(self):
+        self.gridROI_size_width_entry.setValidator(validator_2int())  # two space delimited ints only
+        self.gridROI_size_pos_entry.setValidator(validator_2int())   
         # For when the user types into the boxes
         self.gridROI_size_width_entry.returnPressed.connect(self.on_roisize_text_changed)
         self.gridROI_size_pos_entry.returnPressed.connect(self.on_roipos_text_changed)
-        
         # Listen for any changes by the click and drag code
         self.gridROI_size_width_entry.textChanged.connect(self.sync_memory_from_ui)
         self.gridROI_size_pos_entry.textChanged.connect(self.sync_memory_from_ui)
-        
         self.gridROITitle_reset_button.clicked.connect(self.on_reset_roi_clicked)
         self.done_button.clicked.connect(self.on_done_clicked)
+
+        self.gridMasks_center_entry.setValidator(validator_2int())
+        self.gridMasks_size_combo.currentTextChanged.connect(self.on_masks_size_changed)
+        self.gridMasks_center_entry.returnPressed.connect(self.on_masks_center_changed)
+        self.gridMasksTitle_reset_button.clicked.connect(self.on_reset_masks_clicked)
 
     def sync_memory_from_ui(self):
         """
@@ -285,18 +320,36 @@ class ROIWindow(QDialog):
         except ValueError:
             pass
 
-    def _set_defaults(self):
-        default_size = min(128, self.init_roi[0], self.init_roi[1])
-        self.gridROI_size_width_entry.setText(f"{default_size} {default_size}")
+    # Subap ask controls
+    def on_masks_size_changed(self):
+        size = int(self.gridMasks_size_combo.currentText())
+        self.subapmasks_size = size
+        self.roi_mpl.update_subap_masks(self.subapmasks_center, self.subapmasks_size)
+
+    def on_masks_center_changed(self):
+        try:
+            # validator should prevent this, but just in case... allow graceful
+            # exit of the GUI
+            cx, cy = [int(x) for x in self.gridMasks_center_entry.text().split()]
+        except ValueError:
+            return
         
-        default_left = 1 + (self.xmax - default_size) // 2
-        default_top = 1 + (self.ymax - default_size) // 2
-        self.gridROI_size_pos_entry.setText(f"{default_left} {default_top}")
-
-        self.last_valid_roi = [default_size, default_size, default_left, default_top]
-
+        is_valid, error_message = is_masks_valid(cx, cy, self.subapmasks_size,
+                                                 self.last_valid_roi[0], self.last_valid_roi[1])
+        if not is_valid:
+            self.main_window.log(f"Invalid subap mask center: {error_message}", color="red")
+            # Revert to last valid center
+            self.gridMasks_center_entry.blockSignals(True)
+            self.gridMasks_center_entry.setText(f"{self.subapmasks_center[0]} {self.subapmasks_center[1]}")
+            self.gridMasks_center_entry.blockSignals(False)
+            return
+        
+        self.subapmasks_center = [cx, cy]
+        #self.roi_mpl.update_subap_masks(self.subapmasks_center, self.subapmasks_size)
+    
+    # ROI controls
     def on_reset_roi_clicked(self):
-        self._set_defaults()
+        self._set_roi_defaults()
         self.roi_mpl.draw_roi_from_text()
 
     def on_roisize_text_changed(self):

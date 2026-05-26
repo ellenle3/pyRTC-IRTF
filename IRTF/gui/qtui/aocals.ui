@@ -22,7 +22,7 @@
 }</string>
      </property>
      <property name="currentIndex">
-      <number>1</number>
+      <number>0</number>
      </property>
      <widget class="QWidget" name="tabCals_imat">
       <attribute name="title">
@@ -60,7 +60,7 @@
           <widget class="QLineEdit" name="gridImat_theor_file"/>
          </item>
          <item row="0" column="2">
-          <widget class="QPushButton" name="grid_theor_file_button">
+          <widget class="QPushButton" name="gridImat_theor_file_button">
            <property name="maximumSize">
             <size>
              <width>80</width>
@@ -101,7 +101,7 @@
           <widget class="QLineEdit" name="gridImat_synth_file"/>
          </item>
          <item row="1" column="2">
-          <widget class="QPushButton" name="grid_synth_file_button">
+          <widget class="QPushButton" name="gridImat_synth_file_button">
            <property name="maximumSize">
             <size>
              <width>80</width>

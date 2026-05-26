@@ -137,3 +137,49 @@ class ROIPlotWidget(QWidget):
         if self.entry_size and self.entry_coords:
             self.entry_size.setEnabled(state)
             self.entry_coords.setEnabled(state)
+
+
+## ALSO IN SlopesProcess.py. REMOVE IT FROM HERE WHEN REFACTORING.
+def quadrant_masks(N, angle_deg=0.0):
+    """
+    Generate 4 quadrant masks for an NxN image with optional axis rotation. Used
+    to generate Felix subap masks.
+
+    Parameters
+    ----------
+    N : int
+        Image size (NxN).
+    angle_deg : float
+        Rotation angle in degrees (counterclockwise).
+
+    Returns
+    -------
+    masks : np.ndarray
+        Array of shape (4, N, N) with dtype '>i8'.
+        Order: [upper-left, lower-left, upper-right, lower-right].
+    """
+    # Grid of pixel centers
+    y, x = np.meshgrid(np.arange(N), np.arange(N), indexing='ij')
+    cx, cy = (N - 1) / 2.0, (N - 1) / 2.0
+    x = x - cx
+    y = y - cy
+
+    # Rotate coordinates
+    theta = np.deg2rad(angle_deg)
+    xr =  x * np.cos(theta) + y * np.sin(theta)
+    yr = -x * np.sin(theta) + y * np.cos(theta)
+
+    # Allocate
+    masks = np.zeros((4, N, N), dtype=">i8")
+
+    # Quadrants (strict inequalities)
+    masks[0] = (xr < 0) & (yr > 0)    # upper left
+    masks[1] = (xr < 0) & (yr < 0)    # lower left
+    masks[2] = (xr > 0) & (yr > 0)    # upper right
+    masks[3] = (xr > 0) & (yr < 0)    # lower right
+
+    # Axis tie-break rules
+    masks[1] |= (xr <= 0) & (yr == 0)   # left side y=0
+    masks[3] |= (xr >  0) & (yr == 0)   # right side y=0
+
+    return masks
