@@ -73,9 +73,34 @@ class PyroICSSoft:
             5: "Failed to launch",
             6: "Shutdown timed out",
             7: "Shutdown encountered an error",
+            8: "Invalid key",
             -1: "pyRTC error while running function"
         }
 
+        self.ao_cals = {
+            "imat" : {
+                "theor_file": None,
+                "synth_file": None
+            },
+            "ncpa": {
+                "ra_target": None,
+                "dec_target": None,
+                "ra_guide": None,
+                "auto_offsets": [0, 0, 0, 0, 0, 0, 0],
+                "user_offsets": [0, 0, 0, 0, 0, 0, 0]
+            }
+        }
+
+    def get_aocals(self):
+        return self.ao_cals
+    
+    def set_aocals(self, key, subkey, value):
+        if key in self.ao_cals and subkey in self.ao_cals[key]:
+            self.ao_cals[key][subkey] = value
+            return 0
+        else:
+            return 8
+    
     def get_available_launchers(self):
         return list(self.launchers.keys())
     
@@ -84,13 +109,13 @@ class PyroICSSoft:
         
     def launch(self, component_class):
         if component_class not in self.launchers:
-            return 4
+            return 4, self.errors[4]
         component_type = self.launchers[component_class]["type"]
         
         # Guard component creation
         with self._locks[component_type]:
             if self.is_connected(component_type):
-                return 2
+                return 2, self.errors[2]
             
             hardware_class = PYRTC_CLASS_PATH / self.launchers[component_class]["class_path"]
             config_file = CONFIG_PATH / self.launchers[component_class]["config_path"]

@@ -1,3 +1,9 @@
+"""TODO: define settings in config file...
+- rotation of Felix spots (ROI selector)
+- Number of modal coefficients (AOcals)
+    - gui.ao_cals should be in ICS, not in main window
+- Felix camera settings (at the top of main gui.py)
+"""
 import re
 from wsgiref.validate import validator
 import numpy as np
@@ -179,12 +185,26 @@ def angular_separation(ra1, dec1, ra2, dec2):
 
     return c1.separation(c2).arcsecond
 
-def calc_ncpa_lookup(ra_target, dec_target, ra_guide, dec_guide):
+def calc_ncpa_lookup(ra_target, dec_target, ra_guide, dec_guide, ncpa_lookup_file):
     """
     Calculate NCPA lookup values.
+    ncpa_file = calib/ncpa_model_7modes.npy
     """
     dist_as = angular_separation(ra_target, dec_target, ra_guide, dec_guide)
-    pass
+    ncpa_lookup = np.load(ncpa_lookup_file)
+
+    n_modes = 7
+    ncpa = np.array(n_modes, dtype=float)
+
+    for i in range(n_modes):
+        a = ncpa_lookup[i,0]
+        b = ncpa_lookup[i,1]
+        c = ncpa_lookup[i,2]
+        parabola = lambda x: a * (x**2) + b*x +c
+        ncpa[i] = parabola(dist_as)
+
+    return ncpa
+    
 
 def make_imat_synthetic(self, ics, theoretical_imat, method):
     pass

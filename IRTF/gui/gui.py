@@ -63,12 +63,14 @@ class MainWindow(QWidget):
         #     else:
         #         self.tabControls_AO_Camera.setCurrentIndex(2)
 
+        # Most the below settings probably should not be stored in the GUI in
+        # case the user disconnects and reconnects.
         self.ao_cals = {
             "imat": {
                 "theor_file": None,
                 "synth_file": None,
-                "method": None,
-                "pokeAmp": None,
+                "method": None,   # do the below three really need to be stored
+                "pokeAmp": None,  # here? probably read the attribute of loop process
                 "numItersIM": None
             },
             "ncpa": {
@@ -82,6 +84,7 @@ class MainWindow(QWidget):
 
         }
         self.old_array_input = None  # Store the last ROI in case the camera was toggled on and off
+        # Should this be here?
         self.subap_masks_params = {
             "size": None,
             "cx": None,
