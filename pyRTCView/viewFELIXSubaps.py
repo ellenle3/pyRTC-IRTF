@@ -118,7 +118,7 @@ class RealTimeSubApsView(QMainWindow):
             self._mask_labels = []
 
             try:
-                masks = self.masks.read_noblock()
+                masks = self.masks.read_noblock()                
                 cmap = cm.get_cmap('tab10', masks.shape[0])  # distinct colors
 
                 for i in range(masks.shape[0]):

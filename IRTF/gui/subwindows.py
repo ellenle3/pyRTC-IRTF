@@ -1,4 +1,5 @@
 import os
+import time
 from PyQt6.QtWidgets import QDialog, QFileDialog
 from PyQt6 import uic
 from PyQt6.QtGui import QIntValidator, QDoubleValidator
@@ -220,8 +221,9 @@ class ROIWindow(QDialog):
             return
         
         # Stop the WFS and force one exposure so the SHM is not empty
-        self.main_window.ics.run("wfs", "stop")
+        self.main_window.ics.run("wfs", "start")
         self.main_window.ics.run("wfs", "expose")
+        self.main_window.ics.run("wfs", "stop")
 
         self._connect_signals()
 
@@ -243,6 +245,7 @@ class ROIWindow(QDialog):
 
         self.wfs_shm, self.image_shape, self.image_dtype = initExistingShm("wfs")
         image = self.wfs_shm.read_noblock(SAFE=True, GPU=False)
+
         # Pad to full frame, filling in regions not covered by current ROI
         fill_value = np.nanmin(image)  # image min rather than zeros for imshow color scale
         image = pad_roi_to_full_frame(image, self.xmax, self.ymax, self.binning,

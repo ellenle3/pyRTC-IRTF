@@ -289,10 +289,10 @@ class MainWindow(QWidget):
 
             # Reset WFS SHMs to prevent issues if the ROI is changed to a different
             # default size upon startup
+            self.ics.shutdown("wfs")
+
             self.log("Clearing WFS shared memories")
             self.ics.reset_wfs_shms()
-
-            self.ics.shutdown("wfs")
             self.update_status_camera("Disconnected")
                 
             if self.cam_last_index == 1:
@@ -314,7 +314,8 @@ class MainWindow(QWidget):
                 self.log("Andor SDK not found.", "red")
                 self.tabControls_AO_Camera.setCurrentIndex(0)  # switch back to OFF tab
                 return
-            self.worker = IXONInitWorker("IXON", self._set_ixon_defaults)
+
+            self.worker = IXONInitWorker("IXON")
             self.worker.log_signal.connect(self.log)
             self.worker.status_cam_signal.connect(self.update_status_camera)
             self.worker.done.connect(self._set_ixon_defaults_and_enable)  # re-enable window when done
@@ -339,6 +340,7 @@ class MainWindow(QWidget):
     def _set_ixon_defaults_and_enable(self):
         # changes to the GUI must happen in the main thread to avoid seg fault,
         # so wait until afte the worker is done to set options and defaults
+        self.ics.run("wfs", "stop")  # verify that WFS is stopped before setting defaults, or VSSpeeds with show zeroes
         self._set_ixon_capabilities()
         self._set_ixon_defaults()
         self.is_IXON_enabled = True
@@ -373,6 +375,7 @@ class MainWindow(QWidget):
 
     def on_roi_clicked(self, entry):
         self.log("Opening ROI selector...")
+        self.ics.run("wfs", "stop")
         
         dialog = ROIWindow(self)
         result = dialog.exec()
@@ -395,6 +398,7 @@ class MainWindow(QWidget):
 
     def on_dark_clicked(self):
         self.log("Taking dark")
+        self.ics.run("wfs", "start")    # prevent freezing it takeDark while wfs not running
         self.ics.run("wfs", "takeDark")
 
     # IXON    
@@ -455,7 +459,11 @@ class MainWindow(QWidget):
 
     def on_ixon_readout_changed(self):
         key = self.gridIXON_ReadOut_combo.currentText()
+        if not key or key not in self.IXON_ReadOut_Options:
+            return
         options = self.IXON_ReadOut_Options[key]
+        self.ics.run("wfs", "stop")  # really make sure that the WFS is stopped or this may die
+        time.sleep(0.5) # give it a moment to stop...
         self.ics.run("wfs", "setReadout", options["hi"], None, options["ADChannel"], options["amplifier"])
         self.log("Readout mode " + key)
 
@@ -465,7 +473,9 @@ class MainWindow(QWidget):
     def on_ixon_vss_changed(self):
         key = self.gridIXON_VSS_combo.currentText()
         vi = self.IXON_VSSpeed_Options[key]["vi"]
-        self.ics.run("wfs", "setVSSpeed", vi)
+        self.ics.run("wfs", "stop")  # really make sure that the WFS is stopped or this may die
+        time.sleep(0.5) # give it a moment to stop...
+        self.ics.run("wfs", "setVSSpeed", vi) 
         self.log("Vertical shift speed " + key)
     
     # SimCam
@@ -568,7 +578,8 @@ class MainWindow(QWidget):
         cy = self.subap_masks_params["cy"]
         if cx is not None and cy is not None:
             self.ics.run("slopes", "makeSubApMasks", cx, cy)
-            
+        self.ics.run("slopes", "loadRefSlopes")   # Load defaults from file
+        self.ics.run("loop", "loadIM")
         self.setEnabled(True)
 
     def on_open_loop_clicked(self):

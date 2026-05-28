@@ -562,7 +562,11 @@ class Loop(pyRTCComponent):
         if filename == '':
             self.IM = np.zeros_like(self.IM)
         else:
-            self.IM = np.load(filename)
+            try:
+                self.IM = np.load(filename)
+            except FileNotFoundError:
+                print(f"IM file {filename} not found. Setting to zeros.")
+                self.IM = np.zeros_like(self.IM)
         self.computeCM()
 
     def flatten(self):

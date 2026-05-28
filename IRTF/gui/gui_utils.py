@@ -188,22 +188,29 @@ def angular_separation(ra1, dec1, ra2, dec2):
 def calc_ncpa_lookup(ra_target, dec_target, ra_guide, dec_guide, ncpa_lookup_file):
     """
     Calculate NCPA lookup values.
-    ncpa_file = calib/ncpa_model_7modes.npy
+
+    Returns
+    -------
+    ncpa : np.ndarray
+        Array of NCPA values for each mode.
+    dist_as : float
+        Angular separation between target and guide star in arcseconds.
     """
     dist_as = angular_separation(ra_target, dec_target, ra_guide, dec_guide)
     ncpa_lookup = np.load(ncpa_lookup_file)
 
     n_modes = 7
-    ncpa = np.array(n_modes, dtype=float)
+    ncpa = np.zeros(n_modes, dtype=float)
 
     for i in range(n_modes):
         a = ncpa_lookup[i,0]
         b = ncpa_lookup[i,1]
-        c = ncpa_lookup[i,2]
+        #c = ncpa_lookup[i,2]
+        c = 0 # force center to be = 0
         parabola = lambda x: a * (x**2) + b*x +c
         ncpa[i] = parabola(dist_as)
 
-    return ncpa
+    return ncpa, dist_as
     
 
 def make_imat_synthetic(self, ics, theoretical_imat, method):

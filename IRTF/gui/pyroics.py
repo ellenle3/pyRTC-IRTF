@@ -180,6 +180,9 @@ class PyroICSSoft:
         except TypeError:
             print(f"Function {function} not found in component {component}, or passed wrong number of arguments.")
             return -1
+        except Exception as e:
+            print(f"Error while running {function} on {component}: {e}")
+            return -1
         return result
 
     @Pyro5.api.oneway
@@ -287,11 +290,18 @@ def try_shutdown(component):
     if component is None:
         print("Component is None, skipping shutdown.")
         return
+        
     try:
-        component.stop()
-        del component
-    except AttributeError:
-        print(f"Component {component} cannot be shut down.")
+        if hasattr(component, 'stop'):
+            component.stop()
+            
+        if hasattr(component, 'shutdown'):  # for Andor SDK - release the camera
+            component.shutdown()
+        elif hasattr(component, 'close'):
+            component.close()
+            
+    except Exception as e:
+        print(f"Component {component} threw an error during shutdown: {e}")
 
 def reset_shms():
     shm_names = ["wfs", "wfsRaw", "wfc", "wfc2D", "wfcShape", "signal", "signal2D"

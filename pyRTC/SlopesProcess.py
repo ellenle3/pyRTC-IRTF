@@ -317,7 +317,8 @@ def computeSlopesFELIX(image: np.ndarray,
     y_slopes = slopes[2:]
     points = np.stack([x_slopes.ravel(), y_slopes.ravel()], axis=0)
     
-    rotated_points = rotationMatrix @ points
+    #rotated_points = rotationMatrix @ points
+    rotated_points = points  # do not rotate the actual slopes...
     slopes[:2]  = rotated_points[0].reshape(2, 2) + xcen
     slopes[2:]  = rotated_points[1].reshape(2, 2) + ycen
 
@@ -644,7 +645,7 @@ class SlopesProcess(pyRTCComponent):
 
         # Pad the rest of the array with zeroes to fill the image, centering the
         # mask at the given coordinates
-        offsets = np.array([cx, cy])
+        offsets = [cx, cy]
 
         start_y = cy + (target_h - mask_h) // 2
         start_x = cx + (target_w - mask_w) // 2

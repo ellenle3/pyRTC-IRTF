@@ -53,6 +53,8 @@ class AndorWFS(WavefrontSensor):
         self.sdk.PrepareAcquisition()
         self.sdk.StartAcquisition()
         ret, xmax, ymax = self.sdk.GetDetector()
+        self.xmax = xmax
+        self.ymax = ymax
         
         self.downsampledImage = None
         if "bitDepth" in conf:
@@ -83,7 +85,6 @@ class AndorWFS(WavefrontSensor):
         self.openShutter() # always open for Andor iXon L. opening and closing time is 0 ms
 
         self.oldTotalFrames = 0
-
         return
 
     def stop(self):
@@ -260,6 +261,9 @@ class AndorWFS(WavefrontSensor):
             raw = np.array(raw, copy=True)
             img = raw.reshape((self.roiHeight//self.binning, self.roiWidth//self.binning))
 
+            # FOR FELIX ONLY: rotate 90 deg CW to set N up and E left...
+            #img = np.rot90(img, k=-1)
+
             images.append(img.astype(np.uint16))
             self.oldTotalFrames = newTotal
         
@@ -268,21 +272,27 @@ class AndorWFS(WavefrontSensor):
         return
 
     def __del__(self):
-        self.sdk.AbortAcquisition()
-        self.sdk.SetAcquisitionMode(self.codes.Acquisition_Mode.SINGLE_SCAN)
-        self.closeShutter()
-        self.sdk.ShutDown()  # clean up
-
+        self.shutdown()
         super().__del__()
         time.sleep(1e-1)
 
     def takeDark(self, closeShutter=True):
         if closeShutter:
-            self.closeShutter()
+            self.closeShutter()  # wait for shtuter
+            time.sleep(1)
         super().takeDark()
+        time.sleep(0.5)
         if closeShutter:
             self.openShutter()
+            time.sleep(1)
         return
+    
+    def shutdown(self):
+        self.sdk.AbortAcquisition()
+        self.sdk.SetAcquisitionMode(self.codes.Acquisition_Mode.SINGLE_SCAN)
+        self.closeShutter()
+        self.sdk.ShutDown()  # clean up
+        time.sleep(0.5)
     
     def showAvailableReadout(self):
         # Copy of example ReadOutRates.py

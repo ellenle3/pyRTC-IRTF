@@ -361,7 +361,7 @@ class WavefrontSensor(pyRTCComponent):
         else: #If we have a filename
             dark_load = np.load(filename)
             if dark_load.shape != self.imageRawShape:
-                print(f"darkFile {dark_load.shape} does not match expected shape {self.imageRawShape}.")
+                print(f"darkFile {dark_load.shape} does not match expected shape {self.imageRawShape}. Setting dark to zeros.")
                 self.dark = np.zeros_like(self.dark)
             self.dark = dark_load.astype(self.imageDType)
         return

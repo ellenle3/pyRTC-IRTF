@@ -220,9 +220,9 @@ class RealTimeView(QMainWindow):
             
             if new_time > self.old_time:
                 speed_fps = np.round((new_count - self.old_count)/(new_time - self.old_time), 2)
-                status_text = f"{speed_fps} FPS"
+                status_text = f"{speed_fps} FPS=\n"
             else:
-                status_text = "CONNECTED"
+                status_text = "CONNECTED\n"
             
             if self.fpsText:
                 self.fpsText.set_text(status_text)
