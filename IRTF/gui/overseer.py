@@ -105,6 +105,9 @@ class Overseer():
         if not ics.is_connected("wfs"):
             print("Felix is not running. Cannot update the guide box.")
             return
+        if not ics.is_connected("loop"):
+            print("Loop process not connected. Cannot check if loop is open.")
+            return
         
         dra = offset[0] - self.offset_last[0]
         ddec = offset[1] - self.offset_last[1]
@@ -133,8 +136,13 @@ class Overseer():
         y0 = ics.get("slopes", "ySubApOffset")  # should always be integers
         cx = int(x0 + dx)
         cy = int(y0 + dy)
-        ics.run("slopes", "makeSubApMasks", cx, cy)
 
+        self.ics.run("loop", "setGain", 0)
+        time.wait(0.5)  # wait for the telescope to slew (do it in terms of total offset distance...)
+        result = ics.run("slopes", "makeSubApMasks", cx, cy)
+        if result == -1:
+            print("Failed to update guide box from offset.")
+            return
         self.offset_last = offset
             
     def get_asm_tilt(self):
@@ -149,6 +157,11 @@ class Overseer():
         tip, tilt = current_correction[0], current_correction[1]
         return tip, tilt
     
+    def show_current_tilt(self, tiptilt):
+        #debug
+        tip, tilt = tiptilt
+        print(f"Current tilt - Tip: {tip}, Tilt: {tilt}")
+    
     def open_loop_and_check_tcs(self):
         """Opens the loop and checks if the guide box has changed, or if the
         TCS is slewing.
@@ -160,17 +173,25 @@ class Overseer():
     def is_wfs_snr_ok(self):
         """Returns True if the signal-to-noise ratio in the WFS is okay. 
         """
+        # run estimate SNR but make sure to average over a few frames
         pass
 
 
 if __name__=='__main__':
     overseer = Overseer()
     overseer.set_last_offset_to_current()  # initialize the last offset to the current TCS offset at startup
+    # overseer.register_check(
+    #     name="guidebox_offset",
+    #     check_func=overseer.get_tcs_total_offset,
+    #     callback_func=overseer.update_guidebox_from_offset,
+    #     frequency=0.01
+    # )
+
     overseer.register_check(
-        name="guidebox_offset",
-        check_func=overseer.get_tcs_total_offset,
-        callback_func=overseer.update_guidebox_from_offset,
-        frequency=10
+        name="tilt_monitor",
+        check_func=overseer.get_asm_tilt,
+        callback_func=overseer.show_current_tilt,
+        frequency=2
     )
 
     overseer._run_loop()

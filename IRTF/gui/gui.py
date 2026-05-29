@@ -408,6 +408,7 @@ class MainWindow(QWidget):
         cvidx = ANDOR_CAPABILITIES["AmpModes"].index("Conventional")
 
         self.IXON_ReadOut_Options = {}
+        #
         self.gridIXON_ReadOut_combo.clear()
         for hi, hsspeed in enumerate(ANDOR_CAPABILITIES["HSSpeeds"]):
             hsspeed_str = str( int(hsspeed) ).zfill(2)
@@ -472,6 +473,8 @@ class MainWindow(QWidget):
 
     def on_ixon_vss_changed(self):
         key = self.gridIXON_VSS_combo.currentText()
+        if not key or key not in self.IXON_ReadOut_Options:
+            return
         vi = self.IXON_VSSpeed_Options[key]["vi"]
         self.ics.run("wfs", "stop")  # really make sure that the WFS is stopped or this may die
         time.sleep(0.5) # give it a moment to stop...

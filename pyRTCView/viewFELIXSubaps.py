@@ -11,6 +11,8 @@ from matplotlib.colors import LogNorm
 import matplotlib.patheffects as path_effects
 import matplotlib.cm as cm
 
+FLIP = False
+
 def read_shared_memory(shm_arr):
     return np.copy(shm_arr)
 
@@ -51,6 +53,8 @@ class RealTimeSubApsView(QMainWindow):
         self.axes = self.figure.add_subplot(111)
 
         frame = self.shm.read_noblock()
+        if FLIP:
+            frame = np.rot90(frame, k=1)  # Rotate 90 degrees CCW to set N up and E left
 
         aspect = None
         ASPECTCAP = 10
@@ -91,6 +95,8 @@ class RealTimeSubApsView(QMainWindow):
 
     def update_view(self):
         frame = self.shm.read_noblock()
+        if FLIP:
+            frame = np.rot90(frame, k=1)  # Rotate 90 degrees CCW to set N up and E left
         metadata = self.metadata.read_noblock()
         new_count = metadata[0]
         new_time = metadata[1]
@@ -118,7 +124,10 @@ class RealTimeSubApsView(QMainWindow):
             self._mask_labels = []
 
             try:
-                masks = self.masks.read_noblock()                
+                masks = self.masks.read_noblock()  
+                if FLIP:         
+                    for i in range(masks.shape[0]):
+                        masks[i] = np.rot90(masks[i], k=1)  # Rotate masks to match image orientation     
                 cmap = cm.get_cmap('tab10', masks.shape[0])  # distinct colors
 
                 for i in range(masks.shape[0]):

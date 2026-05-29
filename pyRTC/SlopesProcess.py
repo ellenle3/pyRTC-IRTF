@@ -12,6 +12,7 @@ os.environ['NUMBA_NUM_THREADS'] = '1'
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 from pyRTC.pyRTCComponent import *
+from astropy.io import fits
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
@@ -598,9 +599,13 @@ class SlopesProcess(pyRTCComponent):
 
 
         # For slope offset buffer length
-        self.slopeOffsetBufferLength = setFromConfig(self.conf, "slopeOffsetBufferLength", 1)
-        self.slopeOffsetStep = 0  # keep track of which step in the buffer we are on.
-                                  # updates every time computeSignal() is called
+        self.maxSlopeOffsetsChannels = 9  # max number of channels in soff buffer
+        self.slopeOffsetsBufferFile = setFromConfig(self.conf, "slopeOffsetBufferFile", "")
+        self.loadSlopeOffsetsBuffer(self.slopeOffsetsBufferFile)
+        # keep track of which step in the buffer we are on. updates every time
+        # computeSignal() is called.
+        self.slopeOffsetsStep = 0
+        self.slopeBufferGains = np.zeros(self.maxSlopeOffsetsChannels, dtype=np.float32)
 
         self.refSlopesShm = ImageSHM("refSlopes", self.refSlopes.shape, self.refSlopes.dtype, gpuDevice = self.gpuDevice, consumer=False)
         self.loadRefSlopes()
@@ -756,12 +761,17 @@ class SlopesProcess(pyRTCComponent):
         #Reset reference slopes to zero
         self.setRefSlopes(np.zeros_like(self.refSlopes))
         refSlopes = np.zeros_like(self.refSlopes)
+
+        oldGains = self.slopeBufferGains.copy()
+        self.slopeBufferGains[:] = 0 #Set gains to zero to avoid applying
+
         #Average self.refSlopeCount slopes measurements
         for i in range(self.refSlopeCount):
             cur_slopes = self.read().astype(refSlopes.dtype)
             refSlopes += self.computeSignal2D(cur_slopes)
         refSlopes /= self.refSlopeCount
-        self.setRefSlopes(refSlopes)        
+        self.setRefSlopes(refSlopes)
+        self.slopeBufferGains[:] = oldGains #Restore gains        
         return 
 
     def setRefSlopes(self, refSlopes):
@@ -880,14 +890,16 @@ class SlopesProcess(pyRTCComponent):
                                             yoffset = self.ySubApOffset,
                                             rotationMatrix = self.rotationMatrix)
                 slope_signal = slopes[self.validSubAps]
+
+            for chan in range(self.maxSlopeOffsetsChannels):
+                idx = self.slopeOffsetsStep % self.slopeOffsetsBufferLengths[chan]
+                current_offsets = self.slopeOffsetsBuffer[chan,idx,:]
+                current_offsets = current_offsets.reshape(slope_signal.shape) * self.slopeBufferGains[chan]
+                slope_signal -= current_offsets
+            self.slopeOffsetsStep += 1
+    
             self.signal.write(slope_signal)
             self.signal2D.write(self.computeSignal2D(slope_signal))
-        
-        if self.slopeOffsetStep >= self.slopeOffsetBufferLength:
-            self.slopeOffsetStep = 0
-        else:
-            self.slopeOffsetStep += 1
-        return
     
     def computeImageNoise(self):
         """
@@ -1065,7 +1077,7 @@ class SlopesProcess(pyRTCComponent):
             is spent ramping up and 10% ramping down.
         """
         if self.wfsType != "felix":
-            raise ValueError("chopSubaps is only implemented for FELIX.")
+            raise ValueError("chopSubaps is only implemented for Felix.")
         if self.chopMasks is None or self.chopMasksOffsets is None:
             raise ValueError("No chop masks loaded. Use loadChopMasks() to set the chop positions.")
         numMasks = self.chopMasks.shape[0]
@@ -1145,17 +1157,48 @@ class SlopesProcess(pyRTCComponent):
             scheduler.enter(t, 1, self.setSubApMasks, (masks, offsets))
             t += dt_ramp
 
-        
-        # for n in range(idx, numMasks):
-        #     if pattern.startswith("B") or pattern == "MA":
-        #         # increment n backwards to chop back to starting position
-        #         n = numMasks - n - 1
-        #     masks = self.chopMasks[n]
-        #     offsets = self.chopMasksOffsets[n]
-        #     scheduler.enter(t, 1, self.setSubApMasks, (masks, offsets))
-        #     t += dt_ramp
-
         scheduler.run()
+
+    def loadSlopeOffsetsBuffer(self, filename):
+        """
+        Load slope offsets from a file.
+
+        Parameters
+        ----------
+        filename : str
+            File to load the slope offsets from.
+        """
+        # Set up
+        self.slopeOffsetsBuffer = np.zeros((self.maxSlopeOffsetsChannels, 1 ,self.signalShape[0]))
+        self.slopeOffsetsBufferLengths = np.ones(self.maxSlopeOffsetsChannels, dtype=int)
+        
+        if filename == '':
+            filename = self.slopeOffsetsBufferFile
+        if filename == '':
+            return
+        else:
+            if not os.path.isfile(filename):
+                print(f"Slope offsets buffer file {filename} not found. Setting to zeros.")
+                return
+            
+            # Same file format as for imaka RTC
+            soff = fits.getdata(filename, ext=0)
+            numSlopes = soff.shape[2]
+            if numSlopes != self.signalShape[0]:
+                print(f"Slope offsets buffer does not match the number of slopes. Got {numSlopes}, expected {self.signalShape[0]}. Setting to zeros.")
+                return
+
+            self.slopeOffsetsBuffer = soff
+            header = fits.getheader(filename, ext=0)
+            maxLength = self.slopeOffsetsBuffer.shape[1]
+
+            for i in range(self.maxSlopeOffsetsChannels):
+                key = 'PBSOFF' + str(i).zfill(2)
+                if key in header.keys():
+                    self.slopeOffsetsBufferLengths[i] = header[key]
+                else:
+                    self.slopeOffsetsBufferLengths[i] = maxLength
+        return      
         
     
 if __name__ == "__main__":

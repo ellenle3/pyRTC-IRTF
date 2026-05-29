@@ -7,13 +7,10 @@ loop:
   affinity: 2
   delay: 2
   method: push-pull
-  #playbackBufferFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/pb/cacofoni_pb_189Hz_x378_nmodes7_amp1_fmin4_df0.5.npy"
-  #IMFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/imat/imat.poke.20251002.c.npy"
-  #IMFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/imat/felixsim.20260524.poke.npy"
   playbackBufferFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/pb/cacofoni_pb_189Hz_x378_nmodes7_amp1_fmin4_df0.5.npy"
   #IMFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/imat/imat.poke.20251002.c.npy"
   #IMFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/imat/felixsim.20260524.poke.npy"
-  IMFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/imat/imat.20260527.docrime.b.npy"
+  IMFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/imat/docrime_avg/IM_avg.npy"
   pGain: 0.
   iGain: 0.
   dGain: 0.

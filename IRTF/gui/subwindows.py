@@ -245,6 +245,8 @@ class ROIWindow(QDialog):
 
         self.wfs_shm, self.image_shape, self.image_dtype = initExistingShm("wfs")
         image = self.wfs_shm.read_noblock(SAFE=True, GPU=False)
+        # subtract out lower 20% of pixel values to remove bias
+        image = image - np.percentile(image, 20)
 
         # Pad to full frame, filling in regions not covered by current ROI
         fill_value = np.nanmin(image)  # image min rather than zeros for imshow color scale

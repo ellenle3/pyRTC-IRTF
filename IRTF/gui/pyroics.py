@@ -312,7 +312,7 @@ def reset_shms():
 if __name__ == "__main__":
     ics = PyroICSSoft()
     daemon = Pyro5.api.Daemon()
-    uri = daemon.register(ics, objectId="pyrtc_soft.ics")
+    uri = daemon.register(ics, objectId="pyrtc.ics")
     with open(ICS_URI_PATH, "w") as f:
         f.write(str(uri))
     print("Pyro ICS is running. URI:", uri)

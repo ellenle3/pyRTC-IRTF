@@ -14,6 +14,36 @@ class ROIPlotWidget(QWidget):
         self.figure = Figure()
         self.canvas = FigureCanvas(self.figure)
         self.toolbar = NavigationToolbar(self.canvas, self)
+        
+        # Apply QSS to make toggled and hovered states visible
+        self.toolbar.setStyleSheet("""
+            QToolBar {
+                background-color: #f8fafc; /* Light modern background */
+                border-bottom: 1px solid #e2e8f0;
+                spacing: 4px;
+                padding: 2px;
+            }
+            QToolButton {
+                border: 1px solid transparent;
+                border-radius: 4px;
+                padding: 4px;
+                background-color: transparent;
+            }
+            QToolButton:hover {
+                background-color: #e2e8f0; /* Subtle gray on hover */
+            }
+            QToolButton:checked {
+                background-color: #bfdbfe; /* High-contrast light blue when toggled (Zoom/Pan active) */
+                border: 1px solid #3b82f6;  /* Crisp blue border */
+            }
+            QToolButton:disabled {
+                background-color: transparent;
+                border: 1px solid transparent;
+                /* Qt automatically handles washing out the icon image for disabled states */
+            }
+        """)
+        # -----------------------------------------------------------------
+
         self.ax = self.figure.add_subplot(111)
         
         # Strip all whitespace padding inside the Matplotlib figure
@@ -27,7 +57,7 @@ class ROIPlotWidget(QWidget):
         layout.addWidget(self.toolbar) 
         layout.addWidget(self.canvas)
         self.setLayout(layout)
-        
+                
         # Internal State Variables
         self.roi_rect = None
         self.roi_handle = None

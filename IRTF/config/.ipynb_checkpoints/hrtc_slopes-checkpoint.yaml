@@ -1,0 +1,14 @@
+slopes:
+  type: felix
+  signalType: slopes
+  refSlopesFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/refSlopes_FELIX.npy"
+  chopMasksFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/masks_itp.fits"
+  imageNoise: 20.0
+  refSlopeCount: 800
+  contrast: 1
+  affinity: 4
+  rotation: 45.0 # degrees, CCW
+  numSubAps: 4
+  # gpuDevice: 0
+  functions:
+  - computeSignal

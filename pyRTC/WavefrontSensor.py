@@ -384,6 +384,7 @@ class WavefrontSensor(pyRTCComponent):
         noise (variance of those pixels).
         """
         img = self.image.read_noblock()
+        img = img.astype(np.float64)
         bg_mask = img < np.percentile(img, bg_threshold)
         img -= img[bg_mask].mean() # in case a dark isn't loaded
         noise = np.std(img[bg_mask])
