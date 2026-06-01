@@ -110,7 +110,7 @@ class ImakaTelemetry(pyRTCComponent):
         # ext7: average DM voltages over nave. (nchannels)
         hdu7 = fits.ImageHDU(data=np.array(self.avgCommands, dtype='>f4'),   name="DM_AVG_VOLTAGES")
 
-        # ext8: slope offsets. (niter, nwfs, 2*nsub) not implemented yet...
+        # ext8: slope offsets. (niter, nwfs, 2*nsub)
         hdu8 = fits.ImageHDU(data=np.array(self.slopeOffsets, dtype='>f4'), name="WFS_SLOPE_OFFSETS")
 
         # ext9: pseudo open-loop slopes. Potentially obsolete, set to [-1] to match.

@@ -27,11 +27,15 @@ class IXONInitWorker(QThread):
 
     def run(self):
         ics = get_ics_proxy()  # New proxy has to go in the run thread, not main
-        self.status_cam_signal.emit("Initializing IXON")
+        #self.status_cam_signal.emit("Initializing IXON")
         self.log_signal.emit("Connecting to Andor camera...", "blue")
-        ics.launch("AndorWFS")
+        result = ics.launch("AndorWFS")
+        if result == -1:
+            self.log_signal.emit("init IXON failed", "red")
+            self.done.emit(self.name)
+            return
         ics.run("wfs", "stop")
-        self.status_cam_signal.emit("Ready for acquisition")
+        #self.status_cam_signal.emit("Ready for acquisition")
         self.done.emit(self.name)
 
 class SimCamInitWorker(QThread):
@@ -50,7 +54,7 @@ class SimCamInitWorker(QThread):
 
         # Simulated ASM first since SimCam depends on ASM slope shared memory to
         # inject a fake signal into the simulator.
-        self.status_ASM_signal.emit("Initializing SimASM")
+        #self.status_ASM_signal.emit("Initializing SimASM")
         self.log_signal.emit("Connecting to ASM simulator...", "blue")
 
         if ics.is_connected("wfc"):
@@ -58,15 +62,15 @@ class SimCamInitWorker(QThread):
             self.log_signal.emit("Stopping the ASM. You will need to re-initialize the hardware.", "red")
             ics.shutdown("wfc")
         
-        ics.launch("IRTFASMSimulator")
-        self.status_ASM_signal.emit("SimASM connected")
+        result = ics.launch("IRTFASMSimulator")
+        #self.status_ASM_signal.emit("SimASM connected")
         
         # SimCam (simulated Felix)
-        self.status_cam_signal.emit("Initializing SimCam")
+        #self.status_cam_signal.emit("Initializing SimCam")
         self.log_signal.emit("Connecting to Felix simulator...", "blue")
         ics.launch("FELIXSimulator")
         ics.run("wfs", "stop")
-        self.status_cam_signal.emit("Ready for acquisition")
+        #self.status_cam_signal.emit("Ready for acquisition")
         self.done.emit(self.name)
 
 class LoopInitWorker(QThread):
@@ -85,16 +89,16 @@ class LoopInitWorker(QThread):
 
         # Start the ASM first, but skip if the simulator is running.
         if not ics.is_connected("wfc"):
-            self.status_ASM_signal.emit("Initializing IRTF-ASM-1")
+            #self.status_ASM_signal.emit("Initializing IRTF-ASM-1")
             self.log_signal.emit("Connecting to the ASM. Please wait...", "blue")
 
             ics.launch("ImakaDM")
             ics.run("wfc", "start")
-            self.status_ASM_signal.emit("IRTF-ASM-1 connected")        
+            #self.status_ASM_signal.emit("IRTF-ASM-1 connected")        
 
         # Next is the slopes process, which will calculate the slopes based
         # on the camera data.
-        self.status_loop_signal.emit("Initializing")
+        #self.status_loop_signal.emit("Initializing")
         self.log_signal.emit("Starting slopes process...", "blue")
         ics.launch("SlopesProcess")
         ics.run("slopes", "start")
@@ -110,7 +114,7 @@ class LoopInitWorker(QThread):
         ics.launch("ImakaTelemetry")
         ics.run("tel", "start")
 
-        self.status_loop_signal.emit("Running")
+        #self.status_loop_signal.emit("Running")
         self.done.emit(self.name)
 
 class ICSStatusWorker(QThread):

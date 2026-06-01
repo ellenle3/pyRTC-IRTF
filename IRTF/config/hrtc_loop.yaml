@@ -7,7 +7,7 @@ loop:
   affinity: 2
   delay: 2
   method: push-pull
-  playbackBufferFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/pb/cacofoni_pb_189Hz_x378_nmodes7_amp1_fmin4_df0.5.npy"
+  #playbackBufferFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/pb/cacofoni_pb_189Hz_x378_nmodes7_amp1_fmin4_df0.5.npy"
   #IMFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/imat/imat.poke.20251002.c.npy"
   #IMFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/imat/felixsim.20260524.poke.npy"
   IMFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/imat/docrime_avg/IM_avg.npy"

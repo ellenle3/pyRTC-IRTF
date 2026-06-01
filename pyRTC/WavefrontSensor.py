@@ -305,7 +305,7 @@ class WavefrontSensor(pyRTCComponent):
         else:
             return self.imageRaw.read_noblock()
 
-    def takeDark(self) -> None:
+    def takeDark(self, close_shutter=True) -> None:
         """
         Captures and sets the dark frame.
         """

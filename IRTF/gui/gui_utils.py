@@ -4,6 +4,7 @@
     - gui.ao_cals should be in ICS, not in main window
 - Felix camera settings (at the top of main gui.py)
 """
+import numpy as np
 import re
 from wsgiref.validate import validator
 import numpy as np
@@ -13,6 +14,28 @@ from astropy.coordinates import SkyCoord
 from PyQt6.QtGui import QRegularExpressionValidator
 from PyQt6.QtCore import QRegularExpression
 
+def rotate_felix_image_to_sky(image):
+    """Rotate the image to align north up and east left. This is a 90 degree
+    rotation CCW.
+    """
+    return np.rot90(image, k=1)  # Rotate 90 degrees CCW (k=1)
+
+def subap_masks_colors(opacity=0.35):
+    """Returns an RGBA color list.
+
+    Parameters
+    ----------
+    opacity : float
+        Opacity (0-1). Default is 0.35.
+    """
+    alpha_hex = format(round(max(0, min(1, opacity)) * 255), '02X')
+    colors = [
+        "#C1FF9B",  # light green
+        "#fface4",  # pink
+        "#ab87ff",  # purple
+        "#b4e1ff",  # blue
+    ]
+    return [c + alpha_hex for c in colors]
 
 def validator_4int():
     """Input validator for four space-delimited integers.
@@ -89,7 +112,9 @@ def pad_roi_to_full_frame(image, xmax, ymax, binning, width, height, left, top, 
     binned_height = height // binning
     binned_width = width // binning
 
-    full_frame[row_start:row_start + binned_height, col_start:col_start + binned_width] = image
+    # Normally width and height should be switched here but I am following the
+    # convention used to init shared memories in pyrtc...
+    full_frame[row_start:row_start + binned_width, col_start:col_start + binned_height] = image
 
     return full_frame
 
@@ -120,6 +145,9 @@ def is_masks_valid(mask_size, cx, cy, roi_width, roi_height):
 
 def parse_and_validate_ra(ra_str):
     """Parse RA string hh:mm:ss.ss and return decimal degrees."""
+    if not isinstance(ra_str, str):
+        raise ValueError("RA must be a string in hh:mm:ss.ss format.")
+
     pattern = r'^(\d{1,2}):(\d{2}):(\d{2}(?:\.\d+)?)$'
     m = re.match(pattern, ra_str.strip())
     if not m:
@@ -139,6 +167,9 @@ def parse_and_validate_ra(ra_str):
 
 def parse_and_validate_dec(dec_str):
     """Parse Dec string +dd:mm:ss.s and return decimal degrees."""
+    if not isinstance(dec_str, str):
+        raise ValueError("Dec must be a string in +dd:mm:ss.s format.")
+
     pattern = r'^([+-]?\d{1,2}):(\d{2}):(\d{2}(?:\.\d+)?)$'
     m = re.match(pattern, dec_str.strip())
     if not m:
@@ -185,33 +216,39 @@ def angular_separation(ra1, dec1, ra2, dec2):
 
     return c1.separation(c2).arcsecond
 
-def calc_ncpa_lookup(ra_target, dec_target, ra_guide, dec_guide, ncpa_lookup_file):
-    """
-    Calculate NCPA lookup values.
+def compute_offsets(ra_target, dec_target, ra_offaxis, dec_offaxis):
+    """Compute dRA and dDec from a target to an off-axis source.
+
+    Parameters
+    ----------
+    ra_target, ra_offaxis   : str, RA in hh:mm:ss.ss format
+    dec_target, dec_offaxis : str, Dec in +dd:mm:ss.s format
 
     Returns
     -------
-    ncpa : np.ndarray
-        Array of NCPA values for each mode.
-    dist_as : float
-        Angular separation between target and guide star in arcseconds.
+    dra  : float, offset in RA  [arcsec], positive = east,  includes cos(dec) factor
+    ddec : float, offset in Dec [arcsec], positive = north
     """
-    dist_as = angular_separation(ra_target, dec_target, ra_guide, dec_guide)
-    ncpa_lookup = np.load(ncpa_lookup_file)
+    c_target  = SkyCoord(ra=parse_and_validate_ra(ra_target)  * u.hourangle,
+                         dec=parse_and_validate_dec(dec_target)  * u.deg)
+    c_offaxis = SkyCoord(ra=parse_and_validate_ra(ra_offaxis) * u.hourangle,
+                         dec=parse_and_validate_dec(dec_offaxis) * u.deg)
 
-    n_modes = 7
-    ncpa = np.zeros(n_modes, dtype=float)
+    dra_ang, ddec_ang = c_target.spherical_offsets_to(c_offaxis)
+    return dra_ang.arcsec, ddec_ang.arcsec
 
-    for i in range(n_modes):
-        a = ncpa_lookup[i,0]
-        b = ncpa_lookup[i,1]
-        #c = ncpa_lookup[i,2]
-        c = 0 # force center to be = 0
-        parabola = lambda x: a * (x**2) + b*x +c
-        ncpa[i] = parabola(dist_as)
+def get_current_target():
+    # Gets current on-axis target from t3io...
+    return "00:00:00.00", "+00:00:00.0"
 
-    return ncpa, dist_as
+def calc_focus_lookup(ra_target, dec_target, ra_guide, dec_guide):
+    """Calculate focus lookup values.
+    """
+    r_as = angular_separation(ra_target, dec_target, ra_guide, dec_guide)
+    A = 3.351e-05 
+    # field curvature is a parabola... the scaling factor to focus coefficient
+    # is pre-calibrated
+    return A * r_as*r_as
     
-
 def make_imat_synthetic(self, ics, theoretical_imat, method):
     pass

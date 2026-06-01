@@ -63,26 +63,6 @@ class MainWindow(QWidget):
         #     else:
         #         self.tabControls_AO_Camera.setCurrentIndex(2)
 
-        # Most the below settings probably should not be stored in the GUI in
-        # case the user disconnects and reconnects.
-        self.ao_cals = {
-            "imat": {
-                "theor_file": None,
-                "synth_file": None,
-                "method": None,   # do the below three really need to be stored
-                "pokeAmp": None,  # here? probably read the attribute of loop process
-                "numItersIM": None
-            },
-            "ncpa": {
-                "ra_target": None,
-                "dec_target": None,
-                "ra_guide": None,
-                "dec_guide": None,
-                "auto_offsets": [0, 0, 0, 0, 0, 0, 0],
-                "user_offsets": [0, 0, 0, 0, 0, 0, 0]
-            }
-
-        }
         self.old_array_input = None  # Store the last ROI in case the camera was toggled on and off
         # Should this be here?
         self.subap_masks_params = {
@@ -159,6 +139,7 @@ class MainWindow(QWidget):
         self.gridIXON_itime_entry.returnPressed.connect(lambda: self.on_itime_return_pressed(self.gridIXON_itime_entry))
         self.gridIXON_coadd_entry.returnPressed.connect(self.on_ixon_coadd_return_pressed)
         self.gridIXON_Array_button.clicked.connect(lambda: self.on_array_clicked(self.gridIXON_Array_entry))
+        self.gridIXON_Array_entry.returnPressed.connect(lambda: self.on_array_return_pressed(self.gridIXON_Array_entry))
         self.gridIXON_XYbinning_combo.currentTextChanged.connect(lambda: self.on_xybinning_changed(self.gridIXON_XYbinning_combo))
         self.gridIXON_ReadOut_combo.currentTextChanged.connect(self.on_ixon_readout_changed)
         self.gridIXON_PreampGain_combo.currentTextChanged.connect(self.on_ixon_preampgain_changed)
@@ -174,6 +155,7 @@ class MainWindow(QWidget):
         self.gridSimCam_lag_entry.setValidator(QIntValidator(0, 100))
         self.gridSimCam_itime_entry.returnPressed.connect(lambda: self.on_itime_return_pressed(self.gridSimCam_itime_entry))
         self.gridSimCam_Array_button.clicked.connect(lambda: self.on_array_clicked(self.gridSimCam_Array_entry))
+        self.gridSimCam_Array_entry.returnPressed.connect(lambda: self.on_array_return_pressed(self.gridSimCam_Array_entry))
         self.gridSimCam_XYbinning_combo.currentTextChanged.connect(lambda: self.on_xybinning_changed(self.gridSimCam_XYbinning_combo))
         self.gridSimCam_ROI_button.clicked.connect(lambda: self.on_roi_clicked(self.gridSimCam_Array_entry))
         self.gridSimCam_Amplitude_entry.returnPressed.connect(self.on_simcam_amplitude_return_pressed)
@@ -340,7 +322,14 @@ class MainWindow(QWidget):
     def _set_ixon_defaults_and_enable(self):
         # changes to the GUI must happen in the main thread to avoid seg fault,
         # so wait until afte the worker is done to set options and defaults
-        self.ics.run("wfs", "stop")  # verify that WFS is stopped before setting defaults, or VSSpeeds with show zeroes
+        if not self.ics.is_connected("wfs"):
+            # Failed to init.
+            self.tabControls_AO_Camera.blockSignals(True)
+            self.tabControls_AO_Camera.setCurrentIndex(0)
+            self.tabControls_AO_Camera.blockSignals(False)
+            self.setEnabled(True)
+            return
+
         self._set_ixon_capabilities()
         self._set_ixon_defaults()
         self.is_IXON_enabled = True
@@ -357,6 +346,13 @@ class MainWindow(QWidget):
         self.log("itime " + str(texpos))
 
     def on_array_clicked(self, entry):
+        # Reset to full frame
+        xmax = self.ics.get("wfs", "xmax")
+        ymax = self.ics.get("wfs", "ymax")
+        entry.setText(f"{xmax} {ymax} 1 1")
+        self.on_array_return_pressed(entry)
+
+    def on_array_return_pressed(self, entry):
         roi = [int(x) for x in entry.text().split()]
         xmax = self.ics.get("wfs", "xmax")
         ymax = self.ics.get("wfs", "ymax")
@@ -382,7 +378,7 @@ class MainWindow(QWidget):
 
         if result == QDialog.DialogCode.Accepted:
             entry.setText(dialog.roi_to_main_window)
-            self.on_array_clicked(entry)
+            self.on_array_return_pressed(entry)
             self.subap_masks_params = {
                 "size": dialog.subapmasks_size,
                 "cx": dialog.subapmasks_center[0],
@@ -408,8 +404,9 @@ class MainWindow(QWidget):
         cvidx = ANDOR_CAPABILITIES["AmpModes"].index("Conventional")
 
         self.IXON_ReadOut_Options = {}
-        #
+        self.gridIXON_ReadOut_combo.blockSignals(True)
         self.gridIXON_ReadOut_combo.clear()
+        self.gridIXON_ReadOut_combo.blockSignals(True)
         for hi, hsspeed in enumerate(ANDOR_CAPABILITIES["HSSpeeds"]):
             hsspeed_str = str( int(hsspeed) ).zfill(2)
             key = f"CV_16bit_{hsspeed_str}MHz"
@@ -421,7 +418,9 @@ class MainWindow(QWidget):
             self.gridIXON_ReadOut_combo.addItem(key)
 
         self.IXON_VSSpeed_Options = {}
+        self.gridIXON_VSS_combo.blockSignals(True)
         self.gridIXON_VSS_combo.clear()
+        self.gridIXON_VSS_combo.blockSignals(True)
         for vi, vsspeed in enumerate(ANDOR_CAPABILITIES["VSSpeeds"]):
             vsspeed_str = str( int(vsspeed*1000) )
             key = f"{vsspeed_str}ns"
@@ -443,7 +442,7 @@ class MainWindow(QWidget):
         else:
             array_input = "512 512 1 1"
         self.gridIXON_Array_entry.setText(array_input)
-        self.on_array_clicked(self.gridIXON_Array_entry)
+        self.on_array_return_pressed(self.gridIXON_Array_entry)
         self.gridIXON_XYbinning_combo.setCurrentIndex(0)  # set to 1
         self.on_xybinning_changed(self.gridIXON_XYbinning_combo)
         self.gridIXON_ReadOut_combo.setCurrentIndex(0)  # 17 MHz CV 16 bit
@@ -490,7 +489,7 @@ class MainWindow(QWidget):
         else:
             array_input = "512 512 1 1"
         self.gridSimCam_Array_entry.setText(array_input)
-        self.on_array_clicked(self.gridSimCam_Array_entry)
+        self.on_array_return_pressed(self.gridSimCam_Array_entry)
         self.gridSimCam_XYbinning_combo.setCurrentIndex(0)  # set to 1
         self.on_xybinning_changed(self.gridSimCam_XYbinning_combo)
         self.gridSimCam_Amplitude_entry.setText("30.0")
@@ -561,7 +560,9 @@ class MainWindow(QWidget):
         elif index in [1, 2] and self.AO_last_index == 0:
             if not self.ics.is_connected("wfs"):
                 self.log("Please select a camera before starting the loop.", color="red")
+                self.tabLoopParams.blockSignals(True)
                 self.tabLoopParams.setCurrentIndex(0)  # switch back to Off tab
+                self.tabLoopParams.blockSignals(False)
                 return
             self.worker = LoopInitWorker("Loop")
             self.worker.log_signal.connect(self.log)
@@ -586,13 +587,11 @@ class MainWindow(QWidget):
         self.setEnabled(True)
 
     def on_open_loop_clicked(self):
-        self.ics.run("loop", "setGain", 0)
-        self.ics.set("loop", "leakyGain", 0.01)
+        self.ics.open_loop()
         self.log("open loop")
 
     def on_close_loop_clicked(self):
-        self.ics.run("loop", "setGain", 0.15)
-        self.ics.set("loop", "leakyGain", 0.0)
+        self.ics.close_loop()
         self.log("close loop")
 
     def on_gain_return_pressed(self):

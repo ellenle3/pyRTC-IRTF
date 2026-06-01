@@ -842,7 +842,6 @@ class Loop(pyRTCComponent):
 
         return
 
-
     def plotIM(self, row=None):
 
         plt.imshow(self.IM, cmap = 'inferno', aspect='auto')

@@ -7,6 +7,32 @@ from pyroics import get_ics_proxy
 
 PLATE_SCALE = 0.16 # "/pixel
 POS_ANGLE = 2.3 - 90   # degrees, align image to sky coordinates
+SLEW_SPEED = 1800 # fast slew speed "/s
+TT_TO_RADEC_FILE = "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/tt_to_radec.npy"  # numpy file containing a 2D grid of tip-tilt values corresponding to RA and Dec offsets, generated from Zemax
+
+def print_color(s: str, c: str) -> None:
+    """Prints a colored string.
+
+    Options: 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'black', 'white',
+        'bold', 'underline'
+    """
+    color_dict = {
+        'red': '\033[31m',
+        'green': '\033[32m',
+        'yellow': '\033[33m',
+        'blue': '\033[34m',
+        'magenta': '\033[35m',
+        'cyan': '\033[36m',
+        'black': '\033[30m',
+        'white': '\033[37m',
+        'bold':'\033[1m',
+        'underline': '\033[4m'
+    }
+    assert c in color_dict, "The ANSI escape sequence for c must be defined print_color"
+
+    color_code = color_dict[c]
+    end_code = '\033[0m'
+    print(f'{color_code}' + s + f'{end_code}')
 
 class Overseer():
     """Monitors components to make sure that they are in a safe and functional
@@ -15,6 +41,9 @@ class Overseer():
     """
     def __init__(self):
         self.offset_last = (0, 0)
+        self.tt_to_radec = np.load(TT_TO_RADEC_FILE)
+        self.tt_offload_gain = 0.2
+
         self.tasks = {}
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -35,6 +64,7 @@ class Overseer():
                 if now - task["last_run"] >= interval:
                     try:
                         result = task["check_func"]()
+                        task["callback_func"](result)
                         task["callback_func"](result)
                     except Exception as e:
                         print(f"[Overseer] Error in task '{task['name']}': {e}")
@@ -70,6 +100,40 @@ class Overseer():
             else:
                 print(f"[Overseer] Warning: no task named '{name}' to deregister.")
 
+    # Slewing
+    def is_telescope_slewing(self):
+        """Checks if the telescope is currently slewing by querying t3io.
+        """
+        result = subprocess.run(["t3io", "info", "sm"], capture_output=True, text=True)
+        output = result.stdout.strip()
+        output = output.split(' ')
+        if output[0] != "OK":
+            raise ConnectionError(f"t3io error. Output: {output}")
+        
+        is_slew = (output[1] == "slew")
+        est_time = int(output[2])  # estimated time remaining in seconds, if slewing
+                                   # 0 otherwise
+        return is_slew, est_time
+    
+    def open_loop_if_closed(self, slew_state):
+        """Opens the loop if it is currently closed. Returns True if the loop was
+        open or was successfully opened, False if there was an error.
+        """
+        ics = get_ics_proxy()
+        is_slew, est_time = slew_state
+        if not is_slew:
+            return True  # not slewing, no need to open loop
+
+        if not ics.is_connected("loop"):
+            print("Loop process not connected. Cannot check loop state.")
+            return False
+        if ics.is_closed_loop():
+            print_color("Slew detected while closed loop! Opening the loop...", "red")
+            ics.open_loop()
+            return True
+        
+        return True
+
     # TCS offsets
     def get_tcs_total_offset(self):
         """Retrieves the current guide box offsets from t3io.
@@ -95,7 +159,6 @@ class Overseer():
         """Changes the subaperture masks (basically the guidebox) based differences
         between the last offset and current offset reported by t3io.
         """
-        print(f"Updating guide box from offset: {offset}")
         if offset == self.offset_last:
             return  # no change, no need to update
         ics = get_ics_proxy()
@@ -108,6 +171,8 @@ class Overseer():
         if not ics.is_connected("loop"):
             print("Loop process not connected. Cannot check if loop is open.")
             return
+        
+        print(f"Updating guide box from offset: {offset}")
         
         dra = offset[0] - self.offset_last[0]
         ddec = offset[1] - self.offset_last[1]
@@ -137,14 +202,28 @@ class Overseer():
         cx = int(x0 + dx)
         cy = int(y0 + dy)
 
-        self.ics.run("loop", "setGain", 0)
-        time.wait(0.5)  # wait for the telescope to slew (do it in terms of total offset distance...)
+        # If loop is currently closed, we need to open it before changing the masks,
+        # then wait for the telescope to finish slewing, and then close the loop again.
+        is_close_again = ics.is_closed_loop()
+        if is_close_again:
+            ics.open_loop()
+        
         result = ics.run("slopes", "makeSubApMasks", cx, cy)
         if result == -1:
             print("Failed to update guide box from offset.")
             return
+        
+        if is_close_again:
+            total_offset = np.sqrt( dra**2 + ddec**2 )
+            # multiply by 2 in case we're going in the slow direction
+            slew_time = 2 * total_offset / SLEW_SPEED
+            slew_time += 2  # add a second to be safe... offset will usually be a few arcseconds, so very fast
+            time.sleep(slew_time)
+            ics.close_loop()
+
         self.offset_last = offset
-            
+    
+    # Tilt on ASM
     def get_asm_tilt(self):
         """Retrieves current tilt on the ASM.
         """
@@ -152,46 +231,76 @@ class Overseer():
         ics = get_ics_proxy()
         if not ics.is_connected("wfc"):
             print("ASM not connected. Cannot check tilt.")
-            return
-        current_correction = ics.get("wfc", "currentCorrection")
-        tip, tilt = current_correction[0], current_correction[1]
-        return tip, tilt
+            return (0, 0)
+        tip, tilt = ics.run("wfc", "getAverageTipTilt")
+        return (tip, tilt)
     
+    def offload_asm_tilt_to_tcs(self, tiptilt):
+        """Offloads tilt from the ASM to the TCS if it exceeds a certain threshold.
+        """
+        tip, tilt = tiptilt
+        ra, dec = -1 * self.tt_offload_gain * self.tt_to_radec @ np.array([tip, tilt])
+        
+        # ---- Need to pause update_guidebox!  
+        offset_start = self.get_tcs_total_offset()
+        offset_new = (offset_start[0] + ra, offset_start[1] + dec)
+        # Round to 1 decimal place
+        offset_new = (round(offset_new[0], 1), round(offset_new[1], 1))
+    
+        result = subprocess.run(["t3io", "user.set", str(offset_new[0]), str(offset_new[1])], capture_output=True, text=True)
+        output = result.stdout.strip()
+        output = output.split(' ')
+        if output[0] != "OK":
+            print(f"t3io error when offloading tilt. Output: {output}")
+        self.offset_last = offset_new  # set this so we don't change the guide box
+        # -- renable update_guidebox
+        print(f"Offloaded tilt to TCS. New offset: {offset_new}")
+
+
     def show_current_tilt(self, tiptilt):
         #debug
         tip, tilt = tiptilt
         print(f"Current tilt - Tip: {tip}, Tilt: {tilt}")
     
-    def open_loop_and_check_tcs(self):
-        """Opens the loop and checks if the guide box has changed, or if the
-        TCS is slewing.
-
-        Closes the loop again if it was closed before.
-        """
-        pass
-
     def is_wfs_snr_ok(self):
         """Returns True if the signal-to-noise ratio in the WFS is okay. 
         """
         # run estimate SNR but make sure to average over a few frames
         pass
 
+    def offload_tilt_to_tcs(self):
+        """Offloads tilt from the ASM to the TCS if it exceeds a certain threshold.
+        """
+        tilt = self.get_asm_tilt()
+        
 
 if __name__=='__main__':
     overseer = Overseer()
     overseer.set_last_offset_to_current()  # initialize the last offset to the current TCS offset at startup
-    # overseer.register_check(
-    #     name="guidebox_offset",
-    #     check_func=overseer.get_tcs_total_offset,
-    #     callback_func=overseer.update_guidebox_from_offset,
-    #     frequency=0.01
-    # )
+    
+    # Update the guidebox (subap masks) based on TCS offsets
+    overseer.register_check(
+        name="guidebox_offset",
+        check_func=overseer.get_tcs_total_offset,
+        callback_func=overseer.update_guidebox_from_offset,
+        frequency=10
+    )
 
+    # # Open the loop if slewing, and the loop is closed
+    # overseer.register_check(
+    #     name="open_if_slew",
+    #     check_func=overseer.is_telescope_slewing,
+    #     callback_func=overseer.open_loop_if_closed,
+    #     frequency=10
+    # )
+    
+    # DO NOT HAVE AS USER OFFSETS SINCE IT WILL MESS UP TCS POINTING!
+    # Offloads tilt from the ASM to the TCS
     overseer.register_check(
         name="tilt_monitor",
         check_func=overseer.get_asm_tilt,
-        callback_func=overseer.show_current_tilt,
-        frequency=2
+        callback_func=overseer.offload_asm_tilt_to_tcs,
+        frequency=0.1
     )
 
     overseer._run_loop()

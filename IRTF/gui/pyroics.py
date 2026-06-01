@@ -16,11 +16,25 @@ from Pyro5.errors import CommunicationError
 import Pyro5.configure
 Pyro5.configure.DETAILED_TRACEBACK = True  # allow remote traceback
 Pyro5.configure.COMMTIMEOUT = 15
+Pyro5.configure.global_config.SERIALIZER = "serpent"
+
+import serpent
+def encode_ndarray(obj, serializer, stream, indent):
+    d = {"__class__": "numpy.ndarray", "dtype": str(obj.dtype),
+         "data": obj.tolist(), "shape": list(obj.shape)}
+    serializer.ser_builtins_dict(d, stream, indent)
+    
+def decode_ndarray(classname, d):
+    return np.array(d["data"], dtype=d["dtype"]).reshape(d["shape"])
+
+serpent.register_class(np.ndarray, encode_ndarray)
+Pyro5.api.register_dict_to_class("numpy.ndarray", decode_ndarray)
 
 from pathlib import Path
 CONFIG_PATH = Path(__file__).parent.parent / "config"
 ICS_URI_PATH = CONFIG_PATH / "pyrtc_uri.txt"
 PYRTC_CLASS_PATH = Path(__file__).parent.parent.parent / "pyRTC"
+NUM_MODES = 7
 
 def get_ics_proxy():
     # Each thread will need its own proxy for the ICS.
@@ -80,23 +94,27 @@ class PyroICSSoft:
         self.ao_cals = {
             "imat" : {
                 "theor_file": None,
-                "synth_file": None
+                "synth_file": None,
+                "method": None
             },
             "ncpa": {
-                "ra_target": None,
-                "dec_target": None,
-                "ra_guide": None,
-                "auto_offsets": [0, 0, 0, 0, 0, 0, 0],
-                "user_offsets": [0, 0, 0, 0, 0, 0, 0]
+                "ra_target": "00:00:00.00",
+                "dec_target": "+00:00:00.0",
+                "ra_guide": "00:00:00.00",
+                "dec_guide": "+00:00:00.0",
+                "auto_offsets": np.zeros(NUM_MODES),
+                "user_offsets": np.zeros(NUM_MODES)
             }
         }
 
-    def get_aocals(self):
-        return self.ao_cals
+    def get_aocals(self, key, subkey):
+        return self.ao_cals[key][subkey]
     
     def set_aocals(self, key, subkey, value):
         if key in self.ao_cals and subkey in self.ao_cals[key]:
             self.ao_cals[key][subkey] = value
+            if subkey in ["auto_offsets", "user_offsets"]:
+                self.set_ncpa()  # automatically update slope offsets if modal coefficients change
             return 0
         else:
             return 8
@@ -106,6 +124,27 @@ class PyroICSSoft:
     
     def is_connected(self, component_type):
         return self.components[component_type]["instance"] is not None
+    
+    def get_state(self, component_type):
+        if component_type not in self.components:
+            return 4
+        if not self.is_connected(component_type):
+            return "Disconnected"
+        
+        if component_type == "wfs":
+            return 
+        
+        if component_type == "wfc":
+            return 
+        
+        if component_type == "slopes":
+            return 
+        
+        if component_type == "loop":
+            return 
+        
+        if component_type == "tel":
+            return
         
     def launch(self, component_class):
         if component_class not in self.launchers:
@@ -120,7 +159,11 @@ class PyroICSSoft:
             hardware_class = PYRTC_CLASS_PATH / self.launchers[component_class]["class_path"]
             config_file = CONFIG_PATH / self.launchers[component_class]["config_path"]
             conf = utils.read_yaml_file(config_file)[component_type]
-            instance = instantiate_component(component_class, hardware_class, conf)                                    
+            try:
+                instance = instantiate_component(component_class, hardware_class, conf)                                    
+            except Exception as e:
+                print(f"Error while instantiating component {component_class}: {e}")
+                return -1
 
             self.components[component_type]["instance"] = instance
             self.components[component_type]["class"] = component_class
@@ -278,6 +321,53 @@ class PyroICSSoft:
     def reset_wfs_shms(self):
         # Resets all shared memories dependent on WFS image size
         self.reset_shms(["wfs", "wfsRaw", "subApMasks"])
+
+    # Common loop-related functionality
+    def open_loop(self, flatten=True):
+        """Opens the loop. If flatten=True, also flattens the ASM upon opening
+        the loop so we don't have to wait for voltages to leak off.
+        """
+        if not self.is_connected("loop"):
+            return 3
+        self.run("loop", "setGain", 0)
+        self.set("loop", "leakyGain", 0.02)
+        if flatten:
+            if not self.is_connected("wfc"):
+                return 3
+            self.run("wfc", "flatten")
+
+    def close_loop(self):
+        if not self.is_connected("loop"):
+            return 3
+        self.run("loop", "setGain", 0.08)
+        self.set("loop", "leakyGain", 0.0)
+
+    def is_closed_loop(self):
+        if not self.is_connected("loop"):
+            return 3
+        gain = self.get("loop", "gain")
+        return gain > 0.0
+    
+    def set_ncpa(self):
+        """Updates slope offsets from modal coefficients.
+        auto_offsets and user_offsets must be a 1D list or array of modal coefficients.
+        """
+        total_slope_offsets = np.zeros( (4,2) )
+        auto_offsets = self.get_aocals("ncpa", "auto_offsets")
+        user_offsets = self.get_aocals("ncpa", "user_offsets")
+        
+        total_slope_offsets += self.convert_modes_to_slopes(auto_offsets, reshape=True)     
+        total_slope_offsets += self.convert_modes_to_slopes(user_offsets, reshape=True)
+        
+        self.run("slopes", "setUserSlopeOffsets", total_slope_offsets)
+
+    def convert_modes_to_slopes(self, coeffs, reshape=True):
+        coeffs = np.array(coeffs)
+        imat = self.get("loop", "IM")
+        slope_offsets = imat @ np.array(coeffs)
+        if reshape:
+            slope_offsets = np.reshape(slope_offsets, (4,2))
+        return slope_offsets
 
 def instantiate_component(component_class, class_path, *args, **kwargs):
     spec = importlib.util.spec_from_file_location(component_class, class_path)

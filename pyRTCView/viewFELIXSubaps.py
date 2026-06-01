@@ -11,7 +11,7 @@ from matplotlib.colors import LogNorm
 import matplotlib.patheffects as path_effects
 import matplotlib.cm as cm
 
-FLIP = False
+FLIP = True
 
 def read_shared_memory(shm_arr):
     return np.copy(shm_arr)

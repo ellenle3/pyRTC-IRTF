@@ -138,6 +138,12 @@ class WavefrontCorrector(pyRTCComponent):
         m2cDtype = np.float32
         self.m2cShm = ImageSHM("m2c", m2cShape, m2cDtype, gpuDevice = self.gpuDevice, consumer=False)
         self.readM2C()
+
+        self.nave = setFromConfig(conf, "nave", 1 )  # number of iterations to average over for the following param
+        self.correctionBuffer = np.zeros((self.nave, self.numModes), dtype=np.float32)
+        self.bufferIdx = 0
+        self.averageCorrection = np.zeros(self.numModes, dtype=np.float32)
+
         return
 
     def setFlat(self, flat):
@@ -174,6 +180,7 @@ class WavefrontCorrector(pyRTCComponent):
                 flat = np.load(filename)
         self.setFlat(flat)
         return
+    
     def setLayout(self, layout):
         """
         Set the layout of the actuators.
@@ -339,7 +346,10 @@ class WavefrontCorrector(pyRTCComponent):
         """
         #Read a new modal correction in M2C basis
         self.currentCorrection = self.correctionVector.read()
-        #self.currentCorrection -= np.mean(self.currentCorrection)
+        self.correctionBuffer[self.bufferIdx] = self.currentCorrection.copy()
+        self.bufferIdx = (self.bufferIdx + 1) % self.nave
+        self.averageCorrection = self.correctionBuffer.mean(axis=0)
+
         #If we added a frame delay
         if self.frameDelay > 0:
             #Roll back shape buffer by 1
@@ -460,6 +470,17 @@ class WavefrontCorrector(pyRTCComponent):
             plt.show()
 
         return
+        
+    def getAverageTipTilt(self):
+        # For Felix - assumes modal basis
+        tip = float(self.averageCorrection[0])   # explicitly cast to native float for pyro
+        tilt = float(self.averageCorrection[1])
+        return tip, tilt
+        
+    def setNave(self, nave):
+        self.nave = nave
+        self.correctionBuffer = np.zeros((self.nave, self.numModes), dtype=np.float32)
+        self.bufferIdx = 0
 
 if __name__ == "__main__":
 

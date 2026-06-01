@@ -276,6 +276,7 @@ def computeSlopesFELIX(image: np.ndarray,
     num_masks = masks.shape[0]
 
     # Threshold image
+    threshold = np.percentile(image, 40)
     image = np.where(image > threshold, image.astype(np.float32), 0.0)
 
     # Apply masks to the single image without repeating the image explicitly
@@ -508,7 +509,7 @@ class SlopesProcess(pyRTCComponent):
 
         if self.wfsType == "felix":
             self.rotation = setFromConfig(self.conf, "rotation", 0.0) # square to detector
-            theta = np.radians(self.rotation)
+            theta = np.radians(45) #np.radians(self.rotation)
             cos_theta = np.cos(theta)
             sin_theta = np.sin(theta)
             self.rotationMatrix = np.array([[cos_theta, -sin_theta], [sin_theta, cos_theta]])
@@ -533,6 +534,8 @@ class SlopesProcess(pyRTCComponent):
             self.signal = ImageSHM("signal", self.signalShape, self.signalDType, gpuDevice = self.gpuDevice, consumer=False)
             self.signal2D = ImageSHM("signal2D", self.signal2DShape, self.signalDType, gpuDevice = self.gpuDevice, consumer=False)
             self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
+            self.refSlopesUser = np.zeros_like(self.refSlopes)  # user offsets, designed to be temporary
+            self.refSlopesInternal = self.refSlopes.copy()      # offsets from file, can be reset to this point
 
             self.chopMasksFile = setFromConfig(self.conf, "chopMasksFile", "")
             self.loadChopMasks()
@@ -771,7 +774,9 @@ class SlopesProcess(pyRTCComponent):
             refSlopes += self.computeSignal2D(cur_slopes)
         refSlopes /= self.refSlopeCount
         self.setRefSlopes(refSlopes)
-        self.slopeBufferGains[:] = oldGains #Restore gains        
+        self.slopeBufferGains[:] = oldGains #Restore gains     
+
+        self.refSlopesInternal = self.refSlopes.copy() 
         return 
 
     def setRefSlopes(self, refSlopes):
@@ -793,9 +798,9 @@ class SlopesProcess(pyRTCComponent):
         self.refSlopesShm.write(self.refSlopes)
         return
     
-    def saveRefSlopes(self,filename=''):
+    def saveRefSlopes(self,filename='', includeUserOffsets=False):
         """
-        Save the reference slopes to a file.
+        Save the reference slopes to a file without user offsets.
 
         Parameters
         ----------
@@ -804,7 +809,10 @@ class SlopesProcess(pyRTCComponent):
         """
         if filename == '':
             filename = self.refSlopesFile
-        np.save(filename, self.refSlopes)
+        if includeUserOffsets:
+            np.save(filename, self.refSlopes)
+        else:
+            np.save(filename, self.refSlopesInternal)
         return
 
     def loadRefSlopes(self,filename=''):
@@ -826,8 +834,23 @@ class SlopesProcess(pyRTCComponent):
             refSlopes = np.load(filename)
         
         self.setRefSlopes(refSlopes)
+        self.refSlopesInternal = self.refSlopes.copy()
         return
     
+    def setUserSlopeOffsets(self, offsets):
+        """Sets user slope offsets.
+        """
+        offsets = np.array(offsets)
+        offsets = offsets.astype(self.signalDType)
+        self.refSlopesUser = offsets
+        self.setRefSlopes(self.refSlopesInternal + self.refSlopesUser)
+
+    def clearUserSlopeOffsets(self):
+        """Clears user slope offsets by setting them to zero.
+        """
+        self.refSlopesUser = np.zeros_like(self.refSlopesUser)
+        self.setRefSlopes(self.refSlopesInternal) # reset to internal reference
+
     def computeSignal(self):
         """
         Compute the signal from the WFS image.
@@ -1026,17 +1049,6 @@ class SlopesProcess(pyRTCComponent):
             self.curSignal2D[self.validSubAps] = signal
         return self.curSignal2D
     
-    def setModalSlopeOffsets(self):
-        """
-        """
-        # need imat, or theoretical m2s file
-        pass
-
-    def setContinuousSlopeOffsets(self, gains, filename=""):
-        """
-        """
-        pass
-
     def setChopMasks(self, chopMasks, offsets):
         self.chopMasks = chopMasks
         self.chopMasksOffsets = offsets

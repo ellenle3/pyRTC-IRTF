@@ -17,5 +17,6 @@ wfc:
   hardwareDelay: 0.005 #seconds
   # gpuDevice: 0
   frameDelay: 0
+  nave: 1  # number of iterations to average for ave tip/tilt
   functions:
   - sendToHardware

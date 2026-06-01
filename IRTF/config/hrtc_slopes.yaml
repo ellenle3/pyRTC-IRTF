@@ -1,7 +1,7 @@
 slopes:
   type: felix
   signalType: slopes
-  refSlopesFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/refSlopes_FELIX.npy"
+  refSlopesFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/refSlopes_on-axis_avg.npy"
   chopMasksFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/felixcal/masks_itp.fits"
   imageNoise: 20.0
   refSlopeCount: 800

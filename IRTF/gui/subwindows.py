@@ -1,5 +1,7 @@
 import os
 import time
+
+from matplotlib import scale
 from PyQt6.QtWidgets import QDialog, QFileDialog
 from PyQt6 import uic
 from PyQt6.QtGui import QIntValidator, QDoubleValidator
@@ -14,6 +16,7 @@ BASE_DIR = Path(__file__).parent
 IXON_TEMP_MIN = -120  # same as Felix XUI
 IXON_TEMP_MAX = 20
 ROI_MIN_SIZE = 16  # minimum ROI size to draw subap masks
+NUM_MODES = 7   # put in a config file...
 
 class IXONControlsWindow(QDialog):
     def __init__(self, start_tab=0, parent=None):
@@ -58,8 +61,6 @@ class AOCalsWindow(QDialog):
         uic.loadUi(os.path.join(BASE_DIR, "qtui", "aocals.ui"), self)
         self.main_window = parent
         self.ics = self.main_window.ics
-        self._connect_signals()
-        self.tabCals.setCurrentIndex(start_tab)
 
         if not self.ics.is_connected("loop"):
             self.setEnabled(False)
@@ -69,17 +70,54 @@ class AOCalsWindow(QDialog):
             self.setEnabled(False)
             self.main_window.log("AO cals disabled - slopes is unavailable", color="red")
 
-        slider_min = -1
-        slider_max = 1
+        self._set_defaults()
+        self._connect_signals()
+        self.tabCals.setCurrentIndex(start_tab)
+
+    def _set_defaults(self):
+        # ...to whatever is in aocals
+        theor_file = self.ics.get_aocals("imat", "theor_file")
+        synth_file = self.ics.get_aocals("imat", "synth_file")
+        if theor_file:
+            self.gridImat_theor_file.setText(Path(theor_file).name)
+        if synth_file:
+            self.gridImat_synth_file.setText(Path(synth_file).name)
+
+        # method = self.ics.get_aocals("imat", "method")
+        # pokeAmp = self.ics.get_aocals("imat", "pokeAmp")
+        # numItersIM = self.ics.get_aocals("imat", "numItersIM")
+
+        ra_target = self.ics.get_aocals("ncpa", "ra_target")
+        dec_target = self.ics.get_aocals("ncpa", "dec_target")
+        ra_guide = self.ics.get_aocals("ncpa", "ra_guide")
+        dec_guide = self.ics.get_aocals("ncpa", "dec_guide")
+
+        self.gridCoords_targetRA_entry.setText(ra_target)
+        self.gridCoords_targetDec_entry.setText(dec_target)
+        self.gridCoords_guideRA_entry.setText(ra_guide)
+        self.gridCoords_guideDec_entry.setText(dec_guide)
+
+        slider_min = -2
+        slider_max = 2
         scale = 100
+
+        ncpa_user_offsets = self.ics.get_aocals("ncpa", "user_offsets")
+    
         self.slider_linkers = [
-            SliderEditLinker(self.gridTune_tip_slider, self.gridTune_tip_entry, slider_min, slider_max, scale=scale),
-            SliderEditLinker(self.gridTune_tilt_slider, self.gridTune_tilt_entry, slider_min, slider_max, scale=scale),
-            SliderEditLinker(self.gridTune_focus_slider, self.gridTune_focus_entry, slider_min, slider_max, scale=scale),
-            SliderEditLinker(self.gridTune_a1_slider, self.gridTune_a1_entry, slider_min, slider_max, scale=scale),
-            SliderEditLinker(self.gridTune_a2_slider, self.gridTune_a2_entry, slider_min, slider_max, scale=scale),
-            SliderEditLinker(self.gridTune_c1_slider, self.gridTune_c1_entry, slider_min, slider_max, scale=scale),
-            SliderEditLinker(self.gridTune_c2_slider, self.gridTune_c2_entry, slider_min, slider_max, scale=scale),
+            SliderEditLinker(self.gridTune_tip_slider, self.gridTune_tip_entry,
+                             slider_min, slider_max, scale=scale, initial_value=ncpa_user_offsets[0]),
+            SliderEditLinker(self.gridTune_tilt_slider, self.gridTune_tilt_entry,
+                             slider_min, slider_max, scale=scale, initial_value=ncpa_user_offsets[1]),
+            SliderEditLinker(self.gridTune_focus_slider, self.gridTune_focus_entry,
+                             slider_min, slider_max, scale=scale, initial_value=ncpa_user_offsets[2]),
+            SliderEditLinker(self.gridTune_a1_slider, self.gridTune_a1_entry,
+                             slider_min, slider_max, scale=scale, initial_value=ncpa_user_offsets[3]),
+            SliderEditLinker(self.gridTune_a2_slider, self.gridTune_a2_entry,
+                             slider_min, slider_max, scale=scale, initial_value=ncpa_user_offsets[4]),
+            SliderEditLinker(self.gridTune_c1_slider, self.gridTune_c1_entry,
+                             slider_min, slider_max, scale=scale, initial_value=ncpa_user_offsets[5]),
+            SliderEditLinker(self.gridTune_c2_slider, self.gridTune_c2_entry,
+                             slider_min, slider_max, scale=scale),
         ]
 
     def _connect_signals(self):
@@ -105,13 +143,13 @@ class AOCalsWindow(QDialog):
         basename = Path(filepath).name
         self.gridImat_theor_file.setText(basename) # set gui text to just the filename, not full path
         self.main_window.log(f"Loaded theoretical imat from {filepath}")
-        self.main_window.ao_cals["imat"]["theor_file"] = filepath
+        self.ics.set_aocals("imat", "theor_file", filepath)
 
     def update_synth_imat_file(self, filepath):
         basename = Path(filepath).name
         self.gridImat_synth_file.setText(basename) # set gui text to just the filename, not full path
         self.main_window.log(f"Loaded synthetic imat from {filepath}")
-        self.main_window.ao_cals["imat"]["synth_file"] = filepath
+        self.ics.set_aocals("imat", "synth_file", filepath)
 
     def on_imat_file_return_pressed(self, is_theor):
         filepath = self.gridImat_theor_file.text()
@@ -140,22 +178,22 @@ class AOCalsWindow(QDialog):
 
     def on_imat_method_changed(self):
         method = self.gridImatMethod_combo.currentText()
-        self.main_window.ao_cals["imat"]["method"] = method
+        self.ics.set_aocals("imat", "method", method)
         self.main_window.log(f"Set imat method to {method}")
 
     def on_imat_pokeAmp_changed(self):
         pokeAmp = float(self.gridImatParams_pokeAmp_entry.text())
-        self.main_window.ao_cals["imat"]["pokeAmp"] = pokeAmp
+        self.ics.set_aocals("imat", "pokeAmp", pokeAmp)
         self.main_window.log(f"Set imat poke amplitude to {pokeAmp}")
 
     def on_imat_numItersIM_changed(self):
         numItersIM = int(self.gridImatParams_numItersIM_entry.text())
-        self.main_window.ao_cals["imat"]["numItersIM"] = numItersIM
+        self.ics.set_aocals("imat", "numItersIM", numItersIM)
         self.main_window.log(f"Set imat numItersIM to {numItersIM}")
     
     def on_coords_RA_return_pressed(self, is_target):
         label = "target" if is_target else "guide"
-        entry = self.gridCoords_targetRA_entry if is_target else self.gridCoords_guideRA
+        entry = self.gridCoords_targetRA_entry if is_target else self.gridCoords_guideRA_entry
 
         ra = entry.text()
         try:
@@ -164,12 +202,12 @@ class AOCalsWindow(QDialog):
             self.main_window.log(f"Invalid {label} RA: {e}", color="red")
             entry.setText("")
             return
-        self.main_window.ao_cals["ncpa"][f"ra_{label}"] = ra
+        self.ics.set_aocals("ncpa", f"ra_{label}", ra)
         self.main_window.log(f"Set {label} RA to {ra}")
 
     def on_coords_dec_return_pressed(self, is_target):
         label = "target" if is_target else "guide"
-        entry = self.gridCoords_targetDec_entry if is_target else self.gridCoords_guideDec
+        entry = self.gridCoords_targetDec_entry if is_target else self.gridCoords_guideDec_entry
 
         dec = entry.text()
         try:
@@ -178,35 +216,37 @@ class AOCalsWindow(QDialog):
             self.main_window.log(f"Invalid {label} Dec: {e}", color="red")
             entry.setText("")
             return
-        self.main_window.ao_cals["ncpa"][f"dec_{label}"] = dec
+        self.ics.set_aocals("ncpa", f"dec_{label}", dec)
         self.main_window.log(f"Set {label} Dec to {dec}")
 
     def on_update_auto_offsets_clicked(self):
-        ra_target = self.main_window.ao_cals["ncpa"]["ra_target"]
-        dec_target = self.main_window.ao_cals["ncpa"]["dec_target"]
-        ra_guide = self.main_window.ao_cals["ncpa"]["ra_guide"]
-        dec_guide = self.main_window.ao_cals["ncpa"]["dec_guide"]
+        ra_target = self.ics.get_aocals("ncpa", "ra_target")
+        dec_target = self.ics.get_aocals("ncpa", "dec_target")
+        ra_guide = self.ics.get_aocals("ncpa", "ra_guide")
+        dec_guide = self.ics.get_aocals("ncpa", "dec_guide")
 
         try:
-            auto_offsets = calc_ncpa_lookup(ra_target, dec_target, ra_guide, dec_guide)
+            auto_focus = calc_focus_lookup(ra_target, dec_target, ra_guide, dec_guide)
         except ValueError as e:
             self.main_window.log(f"Failed to parse coordinates.", color="red")
             return
-
-        self.main_window.ao_cals["ncpa"]["auto_offsets"] = auto_offsets
-        self.main_window.log(f"Updated auto slope offsets: {auto_offsets:.2f} arcseconds")
+        
+        coeffs = np.zeros(NUM_MODES)
+        coeffs[2] = auto_focus
+        self.ics.set_aocals("ncpa", "auto_offsets", coeffs)
+        self.main_window.log(f"Setting focus offset to {auto_focus:.2f}", "green")
 
     def on_update_user_offsets_clicked(self):
         self.values = [linker.value() for linker in self.slider_linkers]
-        self.main_window.ao_cals["ncpa"]["user_offsets"] = self.values
-        self.main_window.log(f"Updated user slope offsets: {self.values}")
+        self.ics.set_aocals("ncpa", "user_offsets", self.values)
+        self.main_window.log(f"Setting user offsets: {self.values}", "green")
 
     def on_reset_all_offsets_clicked(self):
-        self.main_window.ao_cals["ncpa"]["auto_offsets"] = [0, 0, 0, 0, 0, 0, 0]
-        self.main_window.ao_cals["ncpa"]["user_offsets"] = [0, 0, 0, 0, 0, 0, 0]
+        self.ics.set_aocals("ncpa", "auto_offsets", np.zeros(NUM_MODES))
+        self.ics.set_aocals("ncpa", "user_offsets", np.zeros(NUM_MODES))
         for linker in self.slider_linkers:
             linker.set_value(0.0)
-        self.main_window.log("Reset all slope offsets to 0")
+        self.main_window.log("Resetting all offsets to 0")
 
 class ROIWindow(QDialog):
     def __init__(self, parent=None):
@@ -441,7 +481,7 @@ class ROIWindow(QDialog):
 class SliderEditLinker:
     """Links an existing QSlider and QLineEdit."""
 
-    def __init__(self, slider, edit, minimum, maximum, scale=100):
+    def __init__(self, slider, edit, minimum, maximum, scale=100, initial_value=0.0):
         self._slider = slider
         self._edit = edit
         self._min = minimum
@@ -452,10 +492,11 @@ class SliderEditLinker:
         slider.setMinimum(int(minimum * scale))
         slider.setMaximum(int(maximum * scale))
 
+        slider.setValue(int(initial_value * scale))
+        edit.setText(f"{initial_value:+.2f}")
+
         slider.valueChanged.connect(self._slider_changed)
         edit.returnPressed.connect(self._edit_changed)
-
-        self.set_value(minimum)
 
     def _slider_changed(self, int_val):
         if self._blocking:

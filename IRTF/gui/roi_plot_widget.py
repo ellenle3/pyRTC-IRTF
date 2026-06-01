@@ -1,4 +1,5 @@
 import numpy as np
+from gui_utils import subap_masks_colors
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QComboBox
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
@@ -178,12 +179,7 @@ class ROIPlotWidget(QWidget):
                     (mask_center_x_binned, mask_center_y_binned - half_mask_binned),                    # Upper Right
                     (mask_center_x_binned, mask_center_y_binned)                                        # Lower Right
                 ]
-                quadrant_colors = [
-                    (0.9, 0.1, 0.1, 0.35),  # Red
-                    (0.1, 0.1, 0.9, 0.35),  # Blue
-                    (0.1, 0.9, 0.1, 0.35),  # Green
-                    (0.9, 0.9, 0.1, 0.35)   # Yellow
-                ]
+                quadrant_colors = subap_masks_colors(opacity=0.35)
 
                 # Create a rotation transform around the center point of the 4 patches
                 rotation_transform = Affine2D().rotate_deg_around(

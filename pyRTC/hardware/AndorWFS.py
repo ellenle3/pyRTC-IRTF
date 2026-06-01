@@ -259,7 +259,7 @@ class AndorWFS(WavefrontSensor):
 
             ret, raw = self.sdk.GetMostRecentImage16(self.size)
             raw = np.array(raw, copy=True)
-            img = raw.reshape((self.roiHeight//self.binning, self.roiWidth//self.binning))
+            img = raw.reshape((self.roiWidth//self.binning, self.roiHeight//self.binning))
 
             # FOR FELIX ONLY: rotate 90 deg CW to set N up and E left...
             #img = np.rot90(img, k=-1)
@@ -288,9 +288,11 @@ class AndorWFS(WavefrontSensor):
         return
     
     def shutdown(self):
+        self.stop()
         self.sdk.AbortAcquisition()
         self.sdk.SetAcquisitionMode(self.codes.Acquisition_Mode.SINGLE_SCAN)
         self.closeShutter()
+        time.sleep(1)
         self.sdk.ShutDown()  # clean up
         time.sleep(0.5)
     
