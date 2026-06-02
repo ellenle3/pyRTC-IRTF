@@ -275,8 +275,12 @@ def computeSlopesFELIX(image: np.ndarray,
 
     num_masks = masks.shape[0]
 
-    # Threshold image
-    threshold = np.percentile(image, 40)
+    image = np.where(image < 0, 0.0, image)  # clip negative values to zero
+    # Set threshold as 60th percentile NOT equal to zeroes
+    #threshold = max( 100, min())
+    threshold = 60
+    clipvalue = np.percentile(image[image > 0], threshold) if np.any(image > 0) else 0.0
+
     image = np.where(image > threshold, image.astype(np.float32), 0.0)
 
     # Apply masks to the single image without repeating the image explicitly
@@ -600,7 +604,6 @@ class SlopesProcess(pyRTCComponent):
             
             self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
 
-
         # For slope offset buffer length
         self.maxSlopeOffsetsChannels = 9  # max number of channels in soff buffer
         self.slopeOffsetsBufferFile = setFromConfig(self.conf, "slopeOffsetBufferFile", "")
@@ -617,14 +620,14 @@ class SlopesProcess(pyRTCComponent):
         # So we can reload the WFS SHM if the image size changes without reseting
         # the whole component
         self.wfsShm, self.imageShape, self.imageDType = initExistingShm("wfs", gpuDevice = self.gpuDevice)
+
+        self.wfsInfoShm, _, _ = initExistingShm("wfsInfo", gpuDevice = self.gpuDevice)
+        self.wfsBinning = self.wfsInfoShm.read_noblock()[2] # should be (dt, t, binning)
+
         subApMasksShape = (self.numSubAps, self.imageShape[0], self.imageShape[1])
         # store in shared memory for plotting
         self.subApMasksShm = ImageSHM("subApMasks", subApMasksShape, '>i8', gpuDevice = self.gpuDevice, consumer=True)
-        self.makeSubApMasks()
-        
-        ysize, xsize = self.imageShape
-        self.yvals = np.arange(ysize).astype(int) - ysize // 2
-        self.xvals = np.arange(xsize).astype(int) - xsize // 2
+        self.makeSubApMasks()        
     
     def makeSubApMasks(self, cx=0, cy=0):
         """
@@ -679,6 +682,13 @@ class SlopesProcess(pyRTCComponent):
         self.subApMasks = masks
         self.xSubApOffset = offsets[0] # in case the mask isn't centered in the image
         self.ySubApOffset = offsets[1]
+        
+        # Update the x and y values for the slope calculations to center them
+        # on the offsetted masks
+        ysize, xsize = self.imageShape
+        self.yvals = np.arange(ysize).astype(int) - ysize // 2
+        self.xvals = np.arange(xsize).astype(int) - xsize // 2
+
         self.subApMasksShm.write(self.subApMasks)
 
     def read(self, block = True, SAFE=True, GPU=False):
@@ -913,6 +923,10 @@ class SlopesProcess(pyRTCComponent):
                                             yoffset = self.ySubApOffset,
                                             rotationMatrix = self.rotationMatrix)
                 slope_signal = slopes[self.validSubAps]
+                # binning will reduce number of pixels and thus the calculated spot positions
+                # scale it back so our interaction matrices and reference slopes
+                # remain the same - apparently don't need this???
+                #slope_signal *= self.wfsBinning
 
             for chan in range(self.maxSlopeOffsetsChannels):
                 idx = self.slopeOffsetsStep % self.slopeOffsetsBufferLengths[chan]
@@ -923,6 +937,12 @@ class SlopesProcess(pyRTCComponent):
     
             self.signal.write(slope_signal)
             self.signal2D.write(self.computeSignal2D(slope_signal))
+
+    def clearSlopes(self):
+        # Removes previous slope calculation... useful for active optics when
+        # exposure times are large and we want to throw one out.
+        self.signal.write(np.zeros_like(self.signal.read_noblock()))
+        self.signal2D.write(np.zeros_like(self.signal2D.read_noblock()))
     
     def computeImageNoise(self):
         """

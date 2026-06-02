@@ -5,14 +5,14 @@ wfs:
   exposure: 0.2
   gain: 0
   bitDepth: 16
-  # left: 1
-  # top: 1
-  # width: 512
-  # height: 512
-  left: 192
-  top: 192
-  width: 128
-  height: 128
+  left: 1
+  top: 1
+  width: 512
+  height: 512
+  # left: 192
+  # top: 192
+  # width: 128
+  # height: 128
   darkCount: 3
   #darkFile: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/darkFELIX.npy"
   affinity: 0

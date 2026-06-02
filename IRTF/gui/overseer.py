@@ -9,6 +9,8 @@ PLATE_SCALE = 0.16 # "/pixel
 POS_ANGLE = 2.3 - 90   # degrees, align image to sky coordinates
 SLEW_SPEED = 1800 # fast slew speed "/s
 TT_TO_RADEC_FILE = "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/tt_to_radec.npy"  # numpy file containing a 2D grid of tip-tilt values corresponding to RA and Dec offsets, generated from Zemax
+DRA_MAX, DDEC_MAX = 0.2, 0.2  # max pointing adjustment before error
+TT_OFFLOAD_GAIN = 0.1 # gain for offloading tip-tilt corrections
 
 def print_color(s: str, c: str) -> None:
     """Prints a colored string.
@@ -42,7 +44,7 @@ class Overseer():
     def __init__(self):
         self.offset_last = (0, 0)
         self.tt_to_radec = np.load(TT_TO_RADEC_FILE)
-        self.tt_offload_gain = 0.2
+        self.ns_rra, self.ns_rdec = (0, 0)
 
         self.tasks = {}
         self._lock = threading.Lock()
@@ -64,7 +66,6 @@ class Overseer():
                 if now - task["last_run"] >= interval:
                     try:
                         result = task["check_func"]()
-                        task["callback_func"](result)
                         task["callback_func"](result)
                     except Exception as e:
                         print(f"[Overseer] Error in task '{task['name']}': {e}")
@@ -100,6 +101,33 @@ class Overseer():
             else:
                 print(f"[Overseer] Warning: no task named '{name}' to deregister.")
 
+    def radec_to_xy(self, dra, ddec):
+        """Converts RA and Dec offsets to pixels using the plate scale and position
+        angle. Returns subpixel values (floats).
+        """
+        if not ics.is_connected("wfs"):
+            print("Felix is not running.")
+            return
+        
+        # Convert to pixel offsets
+        dx = dra / PLATE_SCALE
+        dy = ddec / PLATE_SCALE
+
+        # rotate ccw by the position angle to align with the camera coordinates
+        theta = np.radians(POS_ANGLE)
+        dx_rot = dx * np.cos(theta) - dy * np.sin(theta)
+        dy_rot = dx * np.sin(theta) + dy * np.cos(theta)
+        dx = dx_rot
+        dy = dy_rot
+
+        # subap masks are defined in terms of the final binned image
+        ics = get_ics_proxy()
+        binning = ics.get("wfs", "binning")
+        dx /= binning
+        dy /= binning
+
+        return dx, dy
+    
     # Slewing
     def is_telescope_slewing(self):
         """Checks if the telescope is currently slewing by querying t3io.
@@ -149,13 +177,24 @@ class Overseer():
         offset_new = (float(output[1]), float(output[2]))
         return offset_new
     
+    def get_tcs_nonsidereal(self):
+        result = subprocess.run(["t3io", "info", "NS"], capture_output=True, text=True)
+        output = result.stdout.strip()
+        output = output.split(' ')
+        if output[0] != "OK":
+            raise ConnectionError(f"t3io error. Output: {output}")
+        
+        # Format is OK ra dec
+        ns_rra, ns_rdec = (float(output[1]), float(output[2]))
+        return ns_rra, ns_rdec  # rra = rate ra, rdec = rate dec in arcsec/s
+
     def set_last_offset_to_current(self):
         """Gets the current offset from t3io and sets it as the last known offset.
         Use at the beginning closed loop operations.
         """
         self.offset_last = self.get_tcs_total_offset()
 
-    def update_guidebox_from_offset(self, offset):
+    def update_guidebox(self, offset):
         """Changes the subaperture masks (basically the guidebox) based differences
         between the last offset and current offset reported by t3io.
         """
@@ -165,11 +204,11 @@ class Overseer():
         if not ics.is_connected("slopes"):
             print("Slopes process not connected. Cannot update guide box.")
             return
-        if not ics.is_connected("wfs"):
-            print("Felix is not running. Cannot update the guide box.")
-            return
         if not ics.is_connected("loop"):
-            print("Loop process not connected. Cannot check if loop is open.")
+            print("Loop process not connected.")
+            return
+        if not ics.is_connected("wfc"):
+            print("ASM not connected.")
             return
         
         print(f"Updating guide box from offset: {offset}")
@@ -177,30 +216,15 @@ class Overseer():
         dra = offset[0] - self.offset_last[0]
         ddec = offset[1] - self.offset_last[1]
 
-        # Convert to pixel offsets
-        dx = dra / PLATE_SCALE
-        dy = ddec / PLATE_SCALE
-
-        # rotate ccw by the position angle to align with the camera coordinates
-        theta = np.radians(POS_ANGLE)
-        dx_rot = dx * np.cos(theta) - dy * np.sin(theta)
-        dy_rot = dx * np.sin(theta) + dy * np.cos(theta)
-        dx = dx_rot
-        dy = dy_rot
-
-        # subap masks are defined in terms of the final binned image
-        ics = get_ics_proxy()
-        binning = ics.get("slopes", "binning")
-        dx /= binning
-        dy /= binning
+        dx, dy = self.radec_to_xy(dra, ddec)
         dx = round(dx)
         dy = round(dy)
         
         # Update the subApMasks.
         x0 = ics.get("slopes", "xSubApOffset")  # Current mask center coordinates
         y0 = ics.get("slopes", "ySubApOffset")  # should always be integers
-        cx = int(x0 + dx)
-        cy = int(y0 + dy)
+        cx = int(x0 - dx)
+        cy = int(y0 - dy)
 
         # If loop is currently closed, we need to open it before changing the masks,
         # then wait for the telescope to finish slewing, and then close the loop again.
@@ -217,8 +241,12 @@ class Overseer():
             total_offset = np.sqrt( dra**2 + ddec**2 )
             # multiply by 2 in case we're going in the slow direction
             slew_time = 2 * total_offset / SLEW_SPEED
-            slew_time += 2  # add a second to be safe... offset will usually be a few arcseconds, so very fast
+            slew_time += 1  # add a second to be safe... offset will usually be a few arcseconds, so very fast
             time.sleep(slew_time)
+
+            # Reset slope calculation before closing the loop or it might see
+            # a huge amount of residual tilt from the end of the last exposure
+            #ics.run("wfs", "expose")
             ics.close_loop()
 
         self.offset_last = offset
@@ -239,23 +267,19 @@ class Overseer():
         """Offloads tilt from the ASM to the TCS if it exceeds a certain threshold.
         """
         tip, tilt = tiptilt
-        ra, dec = -1 * self.tt_offload_gain * self.tt_to_radec @ np.array([tip, tilt])
-        
-        # ---- Need to pause update_guidebox!  
-        offset_start = self.get_tcs_total_offset()
-        offset_new = (offset_start[0] + ra, offset_start[1] + dec)
-        # Round to 1 decimal place
-        offset_new = (round(offset_new[0], 1), round(offset_new[1], 1))
-    
-        result = subprocess.run(["t3io", "user.set", str(offset_new[0]), str(offset_new[1])], capture_output=True, text=True)
+        dra, ddec = -1 * TT_OFFLOAD_GAIN * self.tt_to_radec @ np.array([tip, tilt])
+        if abs(dra) > DRA_MAX or abs(ddec) > DDEC_MAX:
+            print(f"Offload amount too large! Not sending to TCS: dra={dra}, ddec={ddec}")
+        ddec *= -1
+        dra_send = str( round(dra, 2) )
+        ddec_send = str( round(ddec, 2) )
+        # use pt.peak.inc to adjust telescope pointing (does not show up in total offset)
+        result = subprocess.run(["t3io", "pt.peak.inc", dra_send, ddec_send], capture_output=True, text=True)
         output = result.stdout.strip()
         output = output.split(' ')
         if output[0] != "OK":
             print(f"t3io error when offloading tilt. Output: {output}")
-        self.offset_last = offset_new  # set this so we don't change the guide box
-        # -- renable update_guidebox
-        print(f"Offloaded tilt to TCS. New offset: {offset_new}")
-
+        print(f"Offloading tilt to TCS: dra={dra_send}, ddec={ddec_send}")
 
     def show_current_tilt(self, tiptilt):
         #debug
@@ -282,7 +306,7 @@ if __name__=='__main__':
     overseer.register_check(
         name="guidebox_offset",
         check_func=overseer.get_tcs_total_offset,
-        callback_func=overseer.update_guidebox_from_offset,
+        callback_func=overseer.update_guidebox,
         frequency=10
     )
 
@@ -300,7 +324,7 @@ if __name__=='__main__':
         name="tilt_monitor",
         check_func=overseer.get_asm_tilt,
         callback_func=overseer.offload_asm_tilt_to_tcs,
-        frequency=0.1
+        frequency=0.2
     )
 
-    overseer._run_loop()
+    overseer._thread.join()  # keep main thread alive

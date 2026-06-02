@@ -249,6 +249,8 @@ class AndorWFS(WavefrontSensor):
     def expose(self):
         # Check if total number of frames has changed
         images = []
+        imgshape = None
+
         for i in range(self.coadds):
             ret, newTotal = self.sdk.GetTotalNumberImagesAcquired()
 
@@ -261,13 +263,18 @@ class AndorWFS(WavefrontSensor):
             raw = np.array(raw, copy=True)
             img = raw.reshape((self.roiWidth//self.binning, self.roiHeight//self.binning))
 
-            # FOR FELIX ONLY: rotate 90 deg CW to set N up and E left...
-            #img = np.rot90(img, k=-1)
-
+            if imgshape is None:
+                imgshape = img.shape
+            elif img.shape != imgshape:
+                # Abort and throw out accquisition if ROI changed in middle of exposure.
+                return
             images.append(img.astype(np.uint16))
             self.oldTotalFrames = newTotal
         
-        self.data = np.sum(images, axis=0)
+        images = np.array(images)
+        self.data = np.mean(images, axis=0)
+        # Round the array and cast to uint16
+        self.data = np.round(self.data).astype(np.uint16)
         super().expose()
         return
 

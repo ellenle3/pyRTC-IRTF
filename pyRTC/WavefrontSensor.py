@@ -164,15 +164,13 @@ class WavefrontSensor(pyRTCComponent):
         self.downsampleFactor = setFromConfig(conf, "downsampleFactor", 0)
         self.binning = setFromConfig(conf, "binning", 1)
 
-        self.initWFSMemory()
-        
         # param 1 is difference from previous timestamp
         # param 2 is absolute time
-        self.wfsInfo = ImageSHM("wfsInfo", (2,), 'i8', gpuDevice = self.gpuDevice, consumer=False)
-        self.oldTimestamp = get_time_usec()
-        self.wfsInfo.write(np.array([0, self.oldTimestamp], dtype='i8'))
-        self.loadDark()
+        # param 3 is binning
+        self.wfsInfo = ImageSHM("wfsInfo", (3,), 'i8', gpuDevice = self.gpuDevice, consumer=False)
 
+        self.initWFSMemory()
+        self.loadDark()
         return
     
     def initWFSMemory(self):
@@ -189,6 +187,9 @@ class WavefrontSensor(pyRTCComponent):
 
         self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
         self.dark = np.zeros(self.imageRawShape, dtype=self.imageDType)
+
+        self.oldTimestamp = get_time_usec()  # reset binning and set counter to 0 again
+        self.wfsInfo.write(np.array([0, self.oldTimestamp, self.binning], dtype='i8'))
 
     def setRoi(self, roi):
         """
@@ -265,7 +266,7 @@ class WavefrontSensor(pyRTCComponent):
         """
         newTime = get_time_usec()
         dt = newTime - self.oldTimestamp
-        self.wfsInfo.write( np.array([dt, newTime], dtype='i8') )
+        self.wfsInfo.write( np.array([dt, newTime, self.binning], dtype='i8') )
         self.oldTimestamp = newTime
 
         self.imageRaw.write(self.data)

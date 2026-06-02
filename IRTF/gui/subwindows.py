@@ -17,6 +17,8 @@ IXON_TEMP_MIN = -120  # same as Felix XUI
 IXON_TEMP_MAX = 20
 ROI_MIN_SIZE = 16  # minimum ROI size to draw subap masks
 NUM_MODES = 7   # put in a config file...
+DEFAULT_ROI_SIZE = 200
+DEFAULT_MASK_SIZE = 64
 
 class IXONControlsWindow(QDialog):
     def __init__(self, start_tab=0, parent=None):
@@ -92,10 +94,15 @@ class AOCalsWindow(QDialog):
         ra_guide = self.ics.get_aocals("ncpa", "ra_guide")
         dec_guide = self.ics.get_aocals("ncpa", "dec_guide")
 
-        self.gridCoords_targetRA_entry.setText(ra_target)
-        self.gridCoords_targetDec_entry.setText(dec_target)
-        self.gridCoords_guideRA_entry.setText(ra_guide)
-        self.gridCoords_guideDec_entry.setText(dec_guide)
+        # self.gridCoords_targetRA_entry.setText(ra_target)
+        # self.gridCoords_targetDec_entry.setText(dec_target)
+        # self.gridCoords_guideRA_entry.setText(ra_guide)
+        # self.gridCoords_guideDec_entry.setText(dec_guide)
+
+        self.gridCoords_targetRA_entry.setText("0.0")
+        self.gridCoords_targetDec_entry.setText("0.0")
+        self.gridCoords_guideRA_entry.setText("0.0")
+        self.gridCoords_guideDec_entry.setText("0.0")
 
         slider_min = -2
         slider_max = 2
@@ -130,6 +137,11 @@ class AOCalsWindow(QDialog):
         self.gridImatParams_pokeAmp_entry.returnPressed.connect(self.on_imat_pokeAmp_changed)
         self.gridImatParams_numItersIM_entry.setValidator(QIntValidator(1, 10000))
         self.gridImatParams_numItersIM_entry.returnPressed.connect(self.on_imat_numItersIM_changed)
+
+        self.gridCoords_targetRA_entry.setValidator(QDoubleValidator(-300.0, 300.0, 4))
+        self.gridCoords_targetDec_entry.setValidator(QDoubleValidator(-300.0, 300.0, 4))
+        self.gridCoords_guideRA_entry.setValidator(QDoubleValidator(-300.0, 300.0, 4))
+        self.gridCoords_guideDec_entry.setValidator(QDoubleValidator(-300.0, 300.0, 4))
 
         self.gridCoords_targetRA_entry.returnPressed.connect(lambda: self.on_coords_RA_return_pressed(is_target=True))
         self.gridCoords_targetDec_entry.returnPressed.connect(lambda: self.on_coords_dec_return_pressed(is_target=True))
@@ -196,28 +208,35 @@ class AOCalsWindow(QDialog):
         entry = self.gridCoords_targetRA_entry if is_target else self.gridCoords_guideRA_entry
 
         ra = entry.text()
-        try:
-            result = parse_and_validate_ra(ra)
-        except ValueError as e:
-            self.main_window.log(f"Invalid {label} RA: {e}", color="red")
-            entry.setText("")
-            return
-        self.ics.set_aocals("ncpa", f"ra_{label}", ra)
-        self.main_window.log(f"Set {label} RA to {ra}")
+        # try:
+        #     result = parse_and_validate_ra(ra)
+        # except ValueError as e:
+        #     self.main_window.log(f"Invalid {label} RA: {e}", color="red")
+        #     entry.setText("")
+        #     return
+        # self.ics.set_aocals("ncpa", f"ra_{label}", ra)
+        # self.main_window.log(f"Set {label} RA to {ra}")
+
+        self.ics.set_aocals("ncpa", "dra", float(ra))
+        self.main_window.log(f"Set dRA to {ra}\"")
+        # self.ics.set_aocals("ncpa", f"ra_{label}", ra)
+        # self.main_window.log(f"Set {label} RA to {ra}")
 
     def on_coords_dec_return_pressed(self, is_target):
         label = "target" if is_target else "guide"
         entry = self.gridCoords_targetDec_entry if is_target else self.gridCoords_guideDec_entry
 
         dec = entry.text()
-        try:
-            result = parse_and_validate_dec(dec)
-        except ValueError as e:
-            self.main_window.log(f"Invalid {label} Dec: {e}", color="red")
-            entry.setText("")
-            return
-        self.ics.set_aocals("ncpa", f"dec_{label}", dec)
-        self.main_window.log(f"Set {label} Dec to {dec}")
+        # try:
+        #     result = parse_and_validate_dec(dec)
+        # except ValueError as e:
+        #     self.main_window.log(f"Invalid {label} Dec: {e}", color="red")
+        #     entry.setText("")
+        #     return
+        # self.ics.set_aocals("ncpa", f"dec_{label}", dec)
+        # self.main_window.log(f"Set {label} Dec to {dec}")
+        self.ics.set_aocals("ncpa", "ddec", float(dec))
+        self.main_window.log(f"Set ddec to {dec}\"")
 
     def on_update_auto_offsets_clicked(self):
         ra_target = self.ics.get_aocals("ncpa", "ra_target")
@@ -225,11 +244,17 @@ class AOCalsWindow(QDialog):
         ra_guide = self.ics.get_aocals("ncpa", "ra_guide")
         dec_guide = self.ics.get_aocals("ncpa", "dec_guide")
 
-        try:
-            auto_focus = calc_focus_lookup(ra_target, dec_target, ra_guide, dec_guide)
-        except ValueError as e:
-            self.main_window.log(f"Failed to parse coordinates.", color="red")
-            return
+        dra = self.ics.get_aocals("ncpa", "dra")
+        ddec = self.ics.get_aocals("ncpa", "ddec")
+
+        # try:
+        #     auto_focus = calc_focus_lookup(ra_target, dec_target, ra_guide, dec_guide)
+        # except ValueError as e:
+        #     self.main_window.log(f"Failed to parse coordinates.", color="red")
+        #     return
+
+        r_as = np.sqrt(dra**2 + ddec**2)
+        auto_focus = calc_focus_lookup2(r_as, ra_guide, dec_guide)
         
         coeffs = np.zeros(NUM_MODES)
         coeffs[2] = auto_focus
@@ -315,9 +340,9 @@ class ROIWindow(QDialog):
         self.roi_mpl.draw_roi_from_text()
 
     def _set_roi_defaults(self):
-        # default size of the roi is either 128 or the max size that fits in the
+        # default size of the roi is either 200 or the max size that fits in the
         # current ROI (set before this window was opened)
-        default_size = min(128, self.init_roi[0], self.init_roi[1])
+        default_size = min(DEFAULT_ROI_SIZE, self.init_roi[0], self.init_roi[1])
         self.gridROI_size_width_entry.setText(f"{default_size} {default_size}")
         
         # Put in the center of the image
@@ -334,13 +359,13 @@ class ROIWindow(QDialog):
         # Center coords are relative to the center of the ROI that will be drawn
         # by the user, not the full frame.
         self.subapmasks_center = [0, 0]  # cx, cy
-        self.subapmasks_size = min(64, self.init_roi[0], self.init_roi[1])
+        self.subapmasks_size = min(DEFAULT_MASK_SIZE, self.init_roi[0], self.init_roi[1])
         self.gridMasks_center_entry.setText(f"{self.subapmasks_center[0]} {self.subapmasks_center[1]}")
         self.gridMasks_size_combo.setCurrentText(str(self.subapmasks_size))
 
     def _connect_signals(self):
         self.gridROI_size_width_entry.setValidator(validator_2int())  # two space delimited ints only
-        self.gridROI_size_pos_entry.setValidator(validator_2int())   
+        self.gridROI_size_pos_entry.setValidator(validator_2int())
         # For when the user types into the boxes
         self.gridROI_size_width_entry.returnPressed.connect(self.on_roisize_text_changed)
         self.gridROI_size_pos_entry.returnPressed.connect(self.on_roipos_text_changed)

@@ -249,6 +249,14 @@ def calc_focus_lookup(ra_target, dec_target, ra_guide, dec_guide):
     # field curvature is a parabola... the scaling factor to focus coefficient
     # is pre-calibrated
     return A * r_as*r_as
+
+def calc_focus_lookup2(r_as, ra_guide, dec_guide):
+    """Calculate focus lookup values.
+    """
+    A = 3.351e-05 
+    # field curvature is a parabola... the scaling factor to focus coefficient
+    # is pre-calibrated
+    return A * r_as*r_as
     
 def make_imat_synthetic(self, ics, theoretical_imat, method):
     pass

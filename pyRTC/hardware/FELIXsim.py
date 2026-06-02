@@ -165,7 +165,7 @@ class FELIXSimulator(WavefrontSensor):
     
     def takeDark(self):
         # For simplicity, we won't simulate a separate dark frame. Just return the bias level.
-        dark = np.full((self.roiHeight, self.roiWidth), self.bias, dtype=np.uint16)
+        dark = np.full((self.roiHeight // self.binning, self.roiWidth // self.binning), self.bias, dtype=np.uint16)
         super().setDark(dark)
         time.sleep(1e-3)
         return

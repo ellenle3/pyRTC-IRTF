@@ -395,7 +395,7 @@ class MainWindow(QWidget):
     def on_dark_clicked(self):
         self.log("Taking dark")
         self.ics.run("wfs", "start")    # prevent freezing it takeDark while wfs not running
-        self.ics.run("wfs", "takeDark")
+        self.ics.run("wfs", "takeDark", False) # False = do not close shutter
 
     # IXON    
     def _set_ixon_capabilities(self):

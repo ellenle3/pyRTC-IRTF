@@ -16,6 +16,8 @@ import matplotlib.cm as cm
 # Import the helper
 from shm_manager import SHMConnectionManager
 
+FLIP = True
+
 class RealTimeSubApsView(QMainWindow):
     def __init__(self, fps, static_vmin=None, static_vmax=None):
         super().__init__()
@@ -101,6 +103,8 @@ class RealTimeSubApsView(QMainWindow):
 
         try:
             frame = self.mgr.shm.read_noblock()
+            if FLIP:
+                frame = np.rot90(frame, k=1) # align to sky
             metadata = self.mgr.metadata.read_noblock()
             if frame is None or metadata is None: raise ValueError()
         except Exception:
@@ -138,6 +142,9 @@ class RealTimeSubApsView(QMainWindow):
             if self.masks_shm:
                 try:
                     masks = self.masks_shm.read_noblock()
+                    if FLIP:         
+                        for i in range(masks.shape[0]):
+                            masks[i] = np.rot90(masks[i], k=1)
                     cmap = cm.get_cmap('tab10', masks.shape[0])
                     for i in range(masks.shape[0]):
                         mask = masks[i]
@@ -161,7 +168,7 @@ class RealTimeSubApsView(QMainWindow):
             status_text = f"PAUSED\nSHM paused for {elapsed} seconds..."
             self.fpsText.set_color('r')
 
-        self.fpsText.set_text(status_text)
+        #self.fpsText.set_text(status_text)
         self.old_time = new_time
         self.canvas.draw()
 

@@ -102,6 +102,8 @@ class PyroICSSoft:
                 "dec_target": "+00:00:00.0",
                 "ra_guide": "00:00:00.00",
                 "dec_guide": "+00:00:00.0",
+                "dra": 0.0,
+                "ddec": 0.0,
                 "auto_offsets": np.zeros(NUM_MODES),
                 "user_offsets": np.zeros(NUM_MODES)
             }
@@ -323,14 +325,14 @@ class PyroICSSoft:
         self.reset_shms(["wfs", "wfsRaw", "subApMasks"])
 
     # Common loop-related functionality
-    def open_loop(self, flatten=True):
+    def open_loop(self, flatten=False):
         """Opens the loop. If flatten=True, also flattens the ASM upon opening
         the loop so we don't have to wait for voltages to leak off.
         """
         if not self.is_connected("loop"):
             return 3
         self.run("loop", "setGain", 0)
-        self.set("loop", "leakyGain", 0.02)
+        self.set("loop", "leakyGain", 0.0)
         if flatten:
             if not self.is_connected("wfc"):
                 return 3
@@ -339,7 +341,10 @@ class PyroICSSoft:
     def close_loop(self):
         if not self.is_connected("loop"):
             return 3
-        self.run("loop", "setGain", 0.08)
+        self.run("slopes", "start")  # In case we force stopped it before
+        self.run("wfc", "start")
+        self.run("loop", "start")
+        self.run("loop", "setGain", 0.05)
         self.set("loop", "leakyGain", 0.0)
 
     def is_closed_loop(self):
