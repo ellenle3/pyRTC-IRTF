@@ -45,6 +45,7 @@ class Overseer():
         self.offset_last = (0, 0)
         self.tt_to_radec = np.load(TT_TO_RADEC_FILE)
         self.ns_rra, self.ns_rdec = (0, 0)
+        self.ns_tstart = None
 
         self.tasks = {}
         self._lock = threading.Lock()
@@ -105,6 +106,8 @@ class Overseer():
         """Converts RA and Dec offsets to pixels using the plate scale and position
         angle. Returns subpixel values (floats).
         """
+        ics = get_ics_proxy()
+        
         if not ics.is_connected("wfs"):
             print("Felix is not running.")
             return
@@ -121,7 +124,6 @@ class Overseer():
         dy = dy_rot
 
         # subap masks are defined in terms of the final binned image
-        ics = get_ics_proxy()
         binning = ics.get("wfs", "binning")
         dx /= binning
         dy /= binning
@@ -177,16 +179,29 @@ class Overseer():
         offset_new = (float(output[1]), float(output[2]))
         return offset_new
     
-    def get_tcs_nonsidereal(self):
+    def get_tcs_nonsidereal_rate(self):
         result = subprocess.run(["t3io", "info", "NS"], capture_output=True, text=True)
         output = result.stdout.strip()
         output = output.split(' ')
         if output[0] != "OK":
             raise ConnectionError(f"t3io error. Output: {output}")
         
-        # Format is OK ra dec
+        # Format is OK ra dec 
         ns_rra, ns_rdec = (float(output[1]), float(output[2]))
         return ns_rra, ns_rdec  # rra = rate ra, rdec = rate dec in arcsec/s
+
+    def reset_nonsidereal(self):
+        self.ns_tstart = None  # reset accumulation
+
+    def get_tcs_nonsidereal_amount(self):
+        if self.ns_tstart == None:
+            self.ns_tstart = time.time()
+
+        ns_rra, ns_rdec = self.get_tcs_nonsidereal_rate()
+        dt = time.time() - self.ns_tstart
+        dra = ns_rra * dt
+        ddec = ns_rdec * dt
+        return dra, ddec
 
     def set_last_offset_to_current(self):
         """Gets the current offset from t3io and sets it as the last known offset.
@@ -198,8 +213,8 @@ class Overseer():
         """Changes the subaperture masks (basically the guidebox) based differences
         between the last offset and current offset reported by t3io.
         """
-        if offset == self.offset_last:
-            return  # no change, no need to update
+        # if offset == self.offset_last:
+        #     return  # no change, no need to update
         ics = get_ics_proxy()
         if not ics.is_connected("slopes"):
             print("Slopes process not connected. Cannot update guide box.")
@@ -210,15 +225,33 @@ class Overseer():
         if not ics.is_connected("wfc"):
             print("ASM not connected.")
             return
-        
-        print(f"Updating guide box from offset: {offset}")
-        
-        dra = offset[0] - self.offset_last[0]
-        ddec = offset[1] - self.offset_last[1]
 
+        t0 = time.time()
+        dra = 0
+        ddec = 0
+        ns_dra, ns_ddec = self.get_tcs_nonsidereal_amount()
+        trun = time.time() - t0
+        if trun > 0.015:
+            print("warning!")
+        if offset != self.offset_last:
+            print(f"Updating guide box from offset: {offset}")
+            dra += offset[0] - self.offset_last[0]
+            ddec += offset[1] - self.offset_last[1]
+
+        # accumulate nonsidereal amount until it's greater than 1 pixel
+        elif abs(ns_dra) > 0.16 or abs(ns_ddec) > 0.16:
+            print(f"Adding non-sidereal amounts: {ns_dra:.2f}, {ns_ddec:.2f}")
+            dra += ns_dra
+            ddec += ns_ddec
+            self.reset_nonsidereal()
+        
+        if dra == 0 and ddec == 0:
+            return
+        
         dx, dy = self.radec_to_xy(dra, ddec)
         dx = round(dx)
         dy = round(dy)
+        print("Moving by", dx, dy, "pixels")
         
         # Update the subApMasks.
         x0 = ics.get("slopes", "xSubApOffset")  # Current mask center coordinates
@@ -320,11 +353,11 @@ if __name__=='__main__':
     
     # DO NOT HAVE AS USER OFFSETS SINCE IT WILL MESS UP TCS POINTING!
     # Offloads tilt from the ASM to the TCS
-    overseer.register_check(
-        name="tilt_monitor",
-        check_func=overseer.get_asm_tilt,
-        callback_func=overseer.offload_asm_tilt_to_tcs,
-        frequency=0.2
-    )
+    # overseer.register_check(
+    #     name="tilt_monitor",
+    #     check_func=overseer.get_asm_tilt,
+    #     callback_func=overseer.offload_asm_tilt_to_tcs,
+    #     frequency=0.2
+    # )
 
     overseer._thread.join()  # keep main thread alive
