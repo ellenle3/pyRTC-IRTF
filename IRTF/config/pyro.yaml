@@ -1,0 +1,5 @@
+pyro:
+  ics_uri_path: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/config/pyrtc_uri.txt"
+  detailed_traceback: true
+  command_timeout: 15
+  serializer: "serpent"
