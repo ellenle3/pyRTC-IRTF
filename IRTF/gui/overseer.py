@@ -44,7 +44,6 @@ class Overseer():
     def __init__(self):
         self.offset_last = (0, 0)
         self.tt_to_radec = np.load(TT_TO_RADEC_FILE)
-        self.ns_rra, self.ns_rdec = (0, 0)
         self.ns_tstart = None
 
         self.tasks = {}
@@ -129,7 +128,7 @@ class Overseer():
         dy /= binning
 
         return dx, dy
-    
+        
     # Slewing
     def is_telescope_slewing(self):
         """Checks if the telescope is currently slewing by querying t3io.
@@ -203,6 +202,10 @@ class Overseer():
         ddec = ns_rdec * dt
         return dra, ddec
 
+    def reset_guidebox(self):
+        self.reset_nonsidereal()
+        self.offset_last = (0, 0)
+
     def set_last_offset_to_current(self):
         """Gets the current offset from t3io and sets it as the last known offset.
         Use at the beginning closed loop operations.
@@ -213,8 +216,6 @@ class Overseer():
         """Changes the subaperture masks (basically the guidebox) based differences
         between the last offset and current offset reported by t3io.
         """
-        # if offset == self.offset_last:
-        #     return  # no change, no need to update
         ics = get_ics_proxy()
         if not ics.is_connected("slopes"):
             print("Slopes process not connected. Cannot update guide box.")
@@ -226,13 +227,9 @@ class Overseer():
             print("ASM not connected.")
             return
 
-        t0 = time.time()
         dra = 0
         ddec = 0
         ns_dra, ns_ddec = self.get_tcs_nonsidereal_amount()
-        trun = time.time() - t0
-        if trun > 0.015:
-            print("warning!")
         if offset != self.offset_last:
             print(f"Updating guide box from offset: {offset}")
             dra += offset[0] - self.offset_last[0]
@@ -334,7 +331,10 @@ class Overseer():
 if __name__=='__main__':
     overseer = Overseer()
     overseer.set_last_offset_to_current()  # initialize the last offset to the current TCS offset at startup
-    
+
+    # Activate the guidebox updating check only when the TO hits "go"
+    # otherwise leave disabled. reset NS rate when disabled (but leave guidebox as is).
+
     # Update the guidebox (subap masks) based on TCS offsets
     overseer.register_check(
         name="guidebox_offset",

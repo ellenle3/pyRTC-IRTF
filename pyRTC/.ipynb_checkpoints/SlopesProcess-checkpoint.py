@@ -12,6 +12,7 @@ os.environ['NUMBA_NUM_THREADS'] = '1'
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 from pyRTC.pyRTCComponent import *
+from astropy.io import fits
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
@@ -262,6 +263,7 @@ def computeSlopesFELIX(image: np.ndarray,
                        threshold: float,
                        masks: np.ndarray,
                        xvals: np.ndarray,
+                       yvals: np.ndarray,
                        xoffset: int,
                        yoffset: int,
                        rotationMatrix: np.ndarray):
@@ -273,8 +275,13 @@ def computeSlopesFELIX(image: np.ndarray,
 
     num_masks = masks.shape[0]
 
-    # Threshold image
-    image = np.where(image > threshold, image.astype(np.float32), 0.0)
+    image = np.where(image < 0, 0.0, image)  # clip negative values to zero
+    # Set threshold as 60th percentile NOT equal to zeroes
+    #threshold = max( 100, min())
+    threshold = 60
+    clipvalue = np.percentile(image[image > 0], threshold) if np.any(image > 0) else 0.0
+
+    image = np.where(image > clipvalue, image.astype(np.float32), 0.0)
 
     # Apply masks to the single image without repeating the image explicitly
     # masked_subaps: (num_masks, H, W)
@@ -284,7 +291,7 @@ def computeSlopesFELIX(image: np.ndarray,
     region_sums = masked_subaps.sum(axis=(1, 2))
 
     # Weights for center-of-mass calculation
-    X, Y = np.meshgrid(xvals, xvals, indexing="xy")  # (H, W)
+    X, Y = np.meshgrid(xvals, yvals, indexing="xy")  # (H, W)
 
     # Weighted sums using einsum -> (num_masks,)
     weighted_sum_x = np.einsum("ijk,jk->i", masked_subaps, X)
@@ -310,21 +317,65 @@ def computeSlopesFELIX(image: np.ndarray,
     slopes[N:][isvalid] = weighted_sum_y[isvalid] / s - yoffset
 
     # Rotate slopes to align with detector axes
-    xcen = 0#0.5 * (xvals[0] + xvals[-1])
-    x_slopes = slopes[:2] - xcen
-    y_slopes = slopes[2:] - xcen
+    #xcen = 0#0.5 * (xvals[0] + xvals[-1])
+    xcen, ycen = 0, 0
+    x_slopes = slopes[:2]
+    y_slopes = slopes[2:]
     points = np.stack([x_slopes.ravel(), y_slopes.ravel()], axis=0)
     
-    rotated_points = rotationMatrix @ points
+    #rotated_points = rotationMatrix @ points
+    rotated_points = points  # do not rotate the actual slopes...
     slopes[:2]  = rotated_points[0].reshape(2, 2) + xcen
-    slopes[2:]  = rotated_points[1].reshape(2, 2) + xcen
+    slopes[2:]  = rotated_points[1].reshape(2, 2) + ycen
 
     slopes[:N][isvalid] -= unaberratedSlopes[:N][isvalid]
     slopes[N:][isvalid] -= unaberratedSlopes[N:][isvalid]
 
     return slopes
 
+def quadrant_masks(N, angle_deg=0.0):
+    """
+    Generate 4 quadrant masks for an NxN image with optional axis rotation. Used
+    to generate Felix subap masks.
 
+    Parameters
+    ----------
+    N : int
+        Image size (NxN).
+    angle_deg : float
+        Rotation angle in degrees (counterclockwise).
+
+    Returns
+    -------
+    masks : np.ndarray
+        Array of shape (4, N, N) with dtype '>i8'.
+        Order: [upper-left, lower-left, upper-right, lower-right].
+    """
+    # Grid of pixel centers
+    y, x = np.meshgrid(np.arange(N), np.arange(N), indexing='ij')
+    cx, cy = (N - 1) / 2.0, (N - 1) / 2.0
+    x = x - cx
+    y = y - cy
+
+    # Rotate coordinates
+    theta = np.deg2rad(angle_deg)
+    xr =  x * np.cos(theta) + y * np.sin(theta)
+    yr = -x * np.sin(theta) + y * np.cos(theta)
+
+    # Allocate
+    masks = np.zeros((4, N, N), dtype=">i8")
+
+    # Quadrants (strict inequalities)
+    masks[0] = (xr < 0) & (yr > 0)    # upper left
+    masks[1] = (xr < 0) & (yr < 0)    # lower left
+    masks[2] = (xr > 0) & (yr > 0)    # upper right
+    masks[3] = (xr > 0) & (yr < 0)    # lower right
+
+    # Axis tie-break rules
+    masks[1] |= (xr <= 0) & (yr == 0)   # left side y=0
+    masks[3] |= (xr >  0) & (yr == 0)   # right side y=0
+
+    return masks
 
 class SlopesProcess(pyRTCComponent):
     """
@@ -444,8 +495,6 @@ class SlopesProcess(pyRTCComponent):
         self.conf = conf
         self.name = "Slopes"
 
-        self.wfsShm, self.imageShape, self.imageDType = initExistingShm("wfs", gpuDevice = self.gpuDevice)
-
         self.signalDType = np.float32
         self.imageNoise = setFromConfig(self.conf,"imageNoise", 0.0)
         self.centralObscurationRatio = setFromConfig(self.conf,"centralObscurationRatio", 0.0)
@@ -455,11 +504,48 @@ class SlopesProcess(pyRTCComponent):
         self.validSubAps = None
         self.validSubApsFile = setFromConfig(self.conf, "validSubApsFile", "")
 
+        if self.wfsType != "felix":
+            self.wfsShm, self.imageShape, self.imageDType = initExistingShm("wfs", gpuDevice = self.gpuDevice)
+
         #Initialize the reference slopes
         self.refSlopesFile = setFromConfig(self.conf, "refSlopesFile", "")
         self.refSlopeCount = setFromConfig(self.conf, "refSlopeCount", 1000)
 
-        if self.wfsType == "pywfs":
+        if self.wfsType == "felix":
+            self.rotation = setFromConfig(self.conf, "rotation", 0.0) # square to detector
+            theta = np.radians(45) #np.radians(self.rotation)
+            cos_theta = np.cos(theta)
+            sin_theta = np.sin(theta)
+            self.rotationMatrix = np.array([[cos_theta, -sin_theta], [sin_theta, cos_theta]])
+
+            self.maskSize = setFromConfig(self.conf, "maskSize", 64)
+            self.numSubAps = setFromConfig(self.conf, "numSubAps", 4)
+            self.initWFSMemoryFelix()
+            self.shwfsContrast = setFromConfig(self.conf, "contrast", 0)
+
+            self.numRegions = int(np.sqrt(self.subApMasks.shape[0]))
+            self.signal2DSize = int(2*self.numRegions**2)
+            self.signal2DShape = (2*self.numRegions,self.numRegions)
+
+            # This information is contained in the masks. Always set to all valid.
+            self.validSubApsFile = ""
+            self.validSubAps = np.ones(self.signal2DShape, dtype=bool)
+            self.loadValidSubAps()
+            
+            self.signalSize = np.sum(self.validSubAps)
+            self.signalShape = (self.signalSize,)
+
+            self.signal = ImageSHM("signal", self.signalShape, self.signalDType, gpuDevice = self.gpuDevice, consumer=False)
+            self.signal2D = ImageSHM("signal2D", self.signal2DShape, self.signalDType, gpuDevice = self.gpuDevice, consumer=False)
+            self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
+            self.refSlopesUser = np.zeros_like(self.refSlopes)  # user offsets, designed to be temporary
+            self.refSlopesInternal = self.refSlopes.copy()      # offsets from file, can be reset to this point
+
+            self.chopMasksFile = setFromConfig(self.conf, "chopMasksFile", "")
+            self.loadChopMasks()
+        
+        elif self.wfsType == "pywfs":
+            raise NotImplementedError("Only Felix is supported. Attempted to initialize a PYWFS SlopesProcess.")
             #Check if we have specified a pupil validSubAps
             if "pupils" in self.conf.keys():
                 pupilLocs = [(int(x.split(',')[1]), int(x.split(',')[0])) for x in self.conf["pupils"]]
@@ -485,7 +571,7 @@ class SlopesProcess(pyRTCComponent):
             self.tmp1, self.tmp2 = np.empty_like(self.p1), np.empty_like(self.p1)
 
         elif self.wfsType == "shwfs":
-
+            raise NotImplementedError("Only Felix is supported. Attempted to initialize a SHWFS SlopesProcess.")
             self.shwfsContrast = setFromConfig(self.conf, "contrast", 0)
             self.subApSpacing = self.conf["subApSpacing"]
             self.regionSize = int(np.round(self.subApSpacing,0))
@@ -518,78 +604,91 @@ class SlopesProcess(pyRTCComponent):
             
             self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
 
-        elif self.wfsType == "felix":
-            self.rotation = setFromConfig(self.conf, "rotation", 0.0) # square to detector
-            theta = np.radians(self.rotation)
-            cos_theta = np.cos(theta)
-            sin_theta = np.sin(theta)
-            self.rotationMatrix = np.array([[cos_theta, -sin_theta], [sin_theta, cos_theta]])
-
-            self.subApMasksFile = setFromConfig(self.conf, "subApMasksFile", "")
-            self.numSubAps = setFromConfig(self.conf, "numSubAps", 4)
-            subApMasksShape = (self.numSubAps, self.imageShape[0], self.imageShape[1])
-            self.subApMasksShm = ImageSHM("subApMasks", subApMasksShape, '>i8', gpuDevice = self.gpuDevice, consumer=True)
-            self.loadSubApMasks(self.subApMasksFile)
-            
-            self.maskSize = self.subApMasks.shape[1]
-            self.xvals = np.arange(self.maskSize).astype(int) - self.maskSize // 2 # should be a square
-            self.shwfsContrast = setFromConfig(self.conf, "contrast", 0)
-
-            self.numRegions = int(np.sqrt(self.subApMasks.shape[0]))
-            self.signal2DSize = int(2*self.numRegions**2)
-            self.signal2DShape = (2*self.numRegions,self.numRegions)
-
-            # This information is contained in the masks. Always set to all valid.
-            self.validSubApsFile = ""
-            self.validSubAps = np.ones(self.signal2DShape, dtype=bool)
-            self.loadValidSubAps()
-            
-            self.signalSize = np.sum(self.validSubAps)
-            self.signalShape = (self.signalSize,)
-
-            self.signal = ImageSHM("signal", self.signalShape, self.signalDType, gpuDevice = self.gpuDevice, consumer=False)
-            self.signal2D = ImageSHM("signal2D", self.signal2DShape, self.signalDType, gpuDevice = self.gpuDevice, consumer=False)
-            self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
-
-            self.chopMasksFile = setFromConfig(self.conf, "chopMasksFile", "")
-            self.loadChopMasks()
-
-
         # For slope offset buffer length
-        self.slopeOffsetBufferLength = setFromConfig(self.conf, "slopeOffsetBufferLength", 1)
-        self.slopeOffsetStep = 0  # keep track of which step in the buffer we are on.
-                                  # updates every time computeSignal() is called
+        self.maxSlopeOffsetsChannels = 9  # max number of channels in soff buffer
+        self.slopeOffsetsBufferFile = setFromConfig(self.conf, "slopeOffsetBufferFile", "")
+        self.loadSlopeOffsetsBuffer(self.slopeOffsetsBufferFile)
+        # keep track of which step in the buffer we are on. updates every time
+        # computeSignal() is called.
+        self.slopeOffsetsStep = 0
+        self.slopeBufferGains = np.zeros(self.maxSlopeOffsetsChannels, dtype=np.float32)
 
         self.refSlopesShm = ImageSHM("refSlopes", self.refSlopes.shape, self.refSlopes.dtype, gpuDevice = self.gpuDevice, consumer=False)
         self.loadRefSlopes()
 
-    def loadSubApMasks(self, filename=''):
+    def initWFSMemoryFelix(self):
+        # So we can reload the WFS SHM if the image size changes without reseting
+        # the whole component
+        self.wfsShm, self.imageShape, self.imageDType = initExistingShm("wfs", gpuDevice = self.gpuDevice)
+
+        self.wfsInfoShm, _, _ = initExistingShm("wfsInfo", gpuDevice = self.gpuDevice)
+        self.wfsBinning = self.wfsInfoShm.read_noblock()[2] # should be (dt, t, binning)
+
+        subApMasksShape = (self.numSubAps, self.imageShape[0], self.imageShape[1])
+        # store in shared memory for plotting
+        self.subApMasksShm = ImageSHM("subApMasks", subApMasksShape, '>i8', gpuDevice = self.gpuDevice, consumer=True)
+        self.makeSubApMasks()        
+    
+    def makeSubApMasks(self, cx=0, cy=0):
         """
-        Load the sub-aperture masks from a file.
+        Generate the sub-aperture quadrant masks. If the generated masks are smaller 
+        than self.imageShape, they are padded with zeros to be centered with an optional offset.
 
         Parameters
         ----------
-        filename : str, optional
-            File to load the sub-aperture masks from. If not specified, uses the configured subApMasksFile.
+        cx : int, optional
+            X-offset from the center of the image. Default is 0.
+        cy : int, optional
+            Y-offset from the center of the image. Default is 0.
         """
-        #If no file given, first try reference slopes file
-        if filename == '':
-            filename = self.subApMasksFile
-        #If we are still without a file, raise an error
-        if filename == '':
-            raise ValueError("No sub-aperture masks file specified.")
-        else: #If we have a filename
-            hdul = fits.open(filename)
-            masks = hdul[0].data
-            offsets = hdul[1].data
+        new_mask_size = min(self.maskSize, self.imageShape[0], self.imageShape[1])
+        if new_mask_size != self.maskSize:
+            print(f"Warning: Requested mask size {self.maskSize} is larger than image dimensions {self.imageShape}. "
+                  f"Using {new_mask_size} instead.")
+        self.maskSize = new_mask_size
 
-        self.setSubApMasks(masks, offsets)
+        # Create base masks
+        loaded_masks = quadrant_masks(self.maskSize, self.rotation)
+        loaded_masks = loaded_masks.astype('>i8')
+        mask_h, mask_w = self.maskSize, self.maskSize
+
+        target_h, target_w = self.imageShape[0], self.imageShape[1]
+
+        # Pad the rest of the array with zeroes to fill the image, centering the
+        # mask at the given coordinates
+        offsets = [cx, cy]
+
+        start_y = cy + (target_h - mask_h) // 2
+        start_x = cx + (target_w - mask_w) // 2
+
+        if start_y < 0 or (start_y + mask_h) > target_h or start_x < 0 or (start_x + mask_w) > target_w:
+            raise ValueError(
+                f"Generated mask of size {self.maskSize}x{self.maskSize} with offsets (cx={cx}, cy={cy}) "
+                f"spills over the target image boundaries {(target_h, target_w)}."
+            )
+
+        # Create padded masks array
+        final_masks = np.zeros((self.numSubAps, target_h, target_w), dtype=loaded_masks.dtype)
+        
+        # Should always be 4 for Felix, but stop in case some are disabled
+        n_aps = min(self.numSubAps, loaded_masks.shape[0])
+        final_masks[:n_aps, start_y:start_y+mask_h, start_x:start_x+mask_w] = loaded_masks[:n_aps]
+
+        # Set and store in shared memory
+        self.setSubApMasks(final_masks, offsets)
         return
 
     def setSubApMasks(self, masks, offsets):
         self.subApMasks = masks
         self.xSubApOffset = offsets[0] # in case the mask isn't centered in the image
         self.ySubApOffset = offsets[1]
+        
+        # Update the x and y values for the slope calculations to center them
+        # on the offsetted masks
+        ysize, xsize = self.imageShape
+        self.yvals = np.arange(ysize).astype(int) - ysize // 2
+        self.xvals = np.arange(xsize).astype(int) - xsize // 2
+
         self.subApMasksShm.write(self.subApMasks)
 
     def read(self, block = True, SAFE=True, GPU=False):
@@ -675,12 +774,19 @@ class SlopesProcess(pyRTCComponent):
         #Reset reference slopes to zero
         self.setRefSlopes(np.zeros_like(self.refSlopes))
         refSlopes = np.zeros_like(self.refSlopes)
+
+        oldGains = self.slopeBufferGains.copy()
+        self.slopeBufferGains[:] = 0 #Set gains to zero to avoid applying
+
         #Average self.refSlopeCount slopes measurements
         for i in range(self.refSlopeCount):
             cur_slopes = self.read().astype(refSlopes.dtype)
             refSlopes += self.computeSignal2D(cur_slopes)
         refSlopes /= self.refSlopeCount
-        self.setRefSlopes(refSlopes)        
+        self.setRefSlopes(refSlopes)
+        self.slopeBufferGains[:] = oldGains #Restore gains     
+
+        self.refSlopesInternal = self.refSlopes.copy() 
         return 
 
     def setRefSlopes(self, refSlopes):
@@ -702,9 +808,9 @@ class SlopesProcess(pyRTCComponent):
         self.refSlopesShm.write(self.refSlopes)
         return
     
-    def saveRefSlopes(self,filename=''):
+    def saveRefSlopes(self,filename='', includeUserOffsets=False):
         """
-        Save the reference slopes to a file.
+        Save the reference slopes to a file without user offsets.
 
         Parameters
         ----------
@@ -713,7 +819,10 @@ class SlopesProcess(pyRTCComponent):
         """
         if filename == '':
             filename = self.refSlopesFile
-        np.save(filename, self.refSlopes)
+        if includeUserOffsets:
+            np.save(filename, self.refSlopes)
+        else:
+            np.save(filename, self.refSlopesInternal)
         return
 
     def loadRefSlopes(self,filename=''):
@@ -735,8 +844,23 @@ class SlopesProcess(pyRTCComponent):
             refSlopes = np.load(filename)
         
         self.setRefSlopes(refSlopes)
+        self.refSlopesInternal = self.refSlopes.copy()
         return
     
+    def setUserSlopeOffsets(self, offsets):
+        """Sets user slope offsets.
+        """
+        offsets = np.array(offsets)
+        offsets = offsets.astype(self.signalDType)
+        self.refSlopesUser = offsets
+        self.setRefSlopes(self.refSlopesInternal + self.refSlopesUser)
+
+    def clearUserSlopeOffsets(self):
+        """Clears user slope offsets by setting them to zero.
+        """
+        self.refSlopesUser = np.zeros_like(self.refSlopesUser)
+        self.setRefSlopes(self.refSlopesInternal) # reset to internal reference
+
     def computeSignal(self):
         """
         Compute the signal from the WFS image.
@@ -794,18 +918,31 @@ class SlopesProcess(pyRTCComponent):
                                             threshold = self.imageNoise*self.shwfsContrast, 
                                             masks = self.subApMasks,
                                             xvals = self.xvals,
+                                            yvals = self.yvals,
                                             xoffset = self.xSubApOffset,
                                             yoffset = self.ySubApOffset,
                                             rotationMatrix = self.rotationMatrix)
                 slope_signal = slopes[self.validSubAps]
+                # binning will reduce number of pixels and thus the calculated spot positions
+                # scale it back so our interaction matrices and reference slopes
+                # remain the same - apparently don't need this???
+                #slope_signal *= self.wfsBinning
+
+            for chan in range(self.maxSlopeOffsetsChannels):
+                idx = self.slopeOffsetsStep % self.slopeOffsetsBufferLengths[chan]
+                current_offsets = self.slopeOffsetsBuffer[chan,idx,:]
+                current_offsets = current_offsets.reshape(slope_signal.shape) * self.slopeBufferGains[chan]
+                slope_signal -= current_offsets
+            self.slopeOffsetsStep += 1
+    
             self.signal.write(slope_signal)
             self.signal2D.write(self.computeSignal2D(slope_signal))
-        
-        if self.slopeOffsetStep >= self.slopeOffsetBufferLength:
-            self.slopeOffsetStep = 0
-        else:
-            self.slopeOffsetStep += 1
-        return
+
+    def clearSlopes(self):
+        # Removes previous slope calculation... useful for active optics when
+        # exposure times are large and we want to throw one out.
+        self.signal.write(np.zeros_like(self.signal.read_noblock()))
+        self.signal2D.write(np.zeros_like(self.signal2D.read_noblock()))
     
     def computeImageNoise(self):
         """
@@ -932,17 +1069,6 @@ class SlopesProcess(pyRTCComponent):
             self.curSignal2D[self.validSubAps] = signal
         return self.curSignal2D
     
-    def setModalSlopeOffsets(self):
-        """
-        """
-        # need imat, or theoretical m2s file
-        pass
-
-    def setContinuousSlopeOffsets(self, gains, filename=""):
-        """
-        """
-        pass
-
     def setChopMasks(self, chopMasks, offsets):
         self.chopMasks = chopMasks
         self.chopMasksOffsets = offsets
@@ -983,7 +1109,7 @@ class SlopesProcess(pyRTCComponent):
             is spent ramping up and 10% ramping down.
         """
         if self.wfsType != "felix":
-            raise ValueError("chopSubaps is only implemented for FELIX.")
+            raise ValueError("chopSubaps is only implemented for Felix.")
         if self.chopMasks is None or self.chopMasksOffsets is None:
             raise ValueError("No chop masks loaded. Use loadChopMasks() to set the chop positions.")
         numMasks = self.chopMasks.shape[0]
@@ -1063,17 +1189,48 @@ class SlopesProcess(pyRTCComponent):
             scheduler.enter(t, 1, self.setSubApMasks, (masks, offsets))
             t += dt_ramp
 
-        
-        # for n in range(idx, numMasks):
-        #     if pattern.startswith("B") or pattern == "MA":
-        #         # increment n backwards to chop back to starting position
-        #         n = numMasks - n - 1
-        #     masks = self.chopMasks[n]
-        #     offsets = self.chopMasksOffsets[n]
-        #     scheduler.enter(t, 1, self.setSubApMasks, (masks, offsets))
-        #     t += dt_ramp
-
         scheduler.run()
+
+    def loadSlopeOffsetsBuffer(self, filename):
+        """
+        Load slope offsets from a file.
+
+        Parameters
+        ----------
+        filename : str
+            File to load the slope offsets from.
+        """
+        # Set up
+        self.slopeOffsetsBuffer = np.zeros((self.maxSlopeOffsetsChannels, 1 ,self.signalShape[0]))
+        self.slopeOffsetsBufferLengths = np.ones(self.maxSlopeOffsetsChannels, dtype=int)
+        
+        if filename == '':
+            filename = self.slopeOffsetsBufferFile
+        if filename == '':
+            return
+        else:
+            if not os.path.isfile(filename):
+                print(f"Slope offsets buffer file {filename} not found. Setting to zeros.")
+                return
+            
+            # Same file format as for imaka RTC
+            soff = fits.getdata(filename, ext=0)
+            numSlopes = soff.shape[2]
+            if numSlopes != self.signalShape[0]:
+                print(f"Slope offsets buffer does not match the number of slopes. Got {numSlopes}, expected {self.signalShape[0]}. Setting to zeros.")
+                return
+
+            self.slopeOffsetsBuffer = soff
+            header = fits.getheader(filename, ext=0)
+            maxLength = self.slopeOffsetsBuffer.shape[1]
+
+            for i in range(self.maxSlopeOffsetsChannels):
+                key = 'PBSOFF' + str(i).zfill(2)
+                if key in header.keys():
+                    self.slopeOffsetsBufferLengths[i] = header[key]
+                else:
+                    self.slopeOffsetsBufferLengths[i] = maxLength
+        return      
         
     
 if __name__ == "__main__":

@@ -281,7 +281,7 @@ def computeSlopesFELIX(image: np.ndarray,
     threshold = 60
     clipvalue = np.percentile(image[image > 0], threshold) if np.any(image > 0) else 0.0
 
-    image = np.where(image > threshold, image.astype(np.float32), 0.0)
+    image = np.where(image > clipvalue, image.astype(np.float32), 0.0)
 
     # Apply masks to the single image without repeating the image explicitly
     # masked_subaps: (num_masks, H, W)
