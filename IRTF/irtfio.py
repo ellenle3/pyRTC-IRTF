@@ -42,6 +42,6 @@ def get_felix_xyoffset():
     if output[0] != "OK":
         raise ConnectionError(f"felixio error. Output: {output}")
     
-    dew = float(output[1])  # delta east-west, in arcseconds
-    dns = float(output[2])  # north-south
-    return dew, dns
+    dra = float(output[1])   # delta east-west, in arcseconds
+    ddec = float(output[2])  # north-south
+    return dra, ddec

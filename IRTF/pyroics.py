@@ -7,6 +7,7 @@ the GUI is responsible for telling the ICS to launch or shut down components.
 """
 import Pyro5.api
 import json
+import os
 import yaml
 import signal
 import threading
@@ -18,24 +19,27 @@ from Pyro5.errors import CommunicationError
 import Pyro5.configure
 import serpent
 
-def _get_config():
-    #config_path = "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/config/ics.yaml"
-    config_path = "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/config/ics.yaml"
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
-    return config
-
-def encode_ndarray(obj, serializer, stream, indent):
+# Allow ND_Arrays to be serialized
+def _encode_ndarray(obj, serializer, stream, indent):
     d = {"__class__": "numpy.ndarray", "dtype": str(obj.dtype),
          "data": obj.tolist(), "shape": list(obj.shape)}
     serializer.ser_builtins_dict(d, stream, indent)
-    
-def decode_ndarray(classname, d):
+def _decode_ndarray(classname, d):
     return np.array(d["data"], dtype=d["dtype"]).reshape(d["shape"])
+Pyro5.configure.global_config.SERIALIZER = "serpent"
+serpent.register_class(np.ndarray, _encode_ndarray)
+Pyro5.api.register_dict_to_class("numpy.ndarray", _decode_ndarray)
+
+def get_ics_config():
+    config_path = "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/config/ics.yaml"
+    #config_path = "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/config/ics.yaml"
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    return config
 
 def get_ics_proxy():
     # Each thread will need its own proxy for the ICS.
-    config = _get_config()
+    config = get_ics_config()
     ics_uri_path = config["pyro"]["ics_uri_path"]
 
     with open(ics_uri_path) as f:
@@ -82,7 +86,7 @@ class PyroICSSoft:
 
     def __init__(self):
 
-        self.config = _get_config()
+        self.config = get_ics_config()
 
         with open(self.config["paths"]["hardware_launchers"]) as f:
             launch_config = json.load(f)
@@ -137,29 +141,10 @@ class PyroICSSoft:
         return list(self.launchers.keys())
     
     def is_connected(self, component_type):
-        return self.components[component_type]["instance"] is not None
-    
-    def get_state(self, component_type):
         if component_type not in self.components:
             return ICSErrorCodes.get_code("Invalid component type"), "Invalid component type"
-        if not self.is_connected(component_type):
-            return "Disconnected"
-        
-        if component_type == "wfs":
-            return 
-        
-        if component_type == "wfc":
-            return 
-        
-        if component_type == "slopes":
-            return 
-        
-        if component_type == "loop":
-            return 
-        
-        if component_type == "tel":
-            return
-        
+        return self.components[component_type]["instance"] is not None
+            
     def launch(self, component_class):
         if component_class not in self.launchers:
             return ICSErrorCodes.get_code("Invalid component type"), "Invalid component type"
@@ -172,8 +157,8 @@ class PyroICSSoft:
             if self.is_connected(component_type):
                 return ICSErrorCodes.get_code("Component already exists"), "Component already exists"
             
-            hardware_class = pyrtc_class_path / self.launchers[component_class]["class_path"]
-            config_file = hardware_config_path / self.launchers[component_class]["config_path"]
+            hardware_class = os.path.join( pyrtc_class_path, self.launchers[component_class]["class_path"] )
+            config_file = os.path.join( hardware_config_path, self.launchers[component_class]["config_path"] )
             conf = utils.read_yaml_file(config_file)[component_type]
             try:
                 instance = instantiate_component(component_class, hardware_class, conf)                                    
@@ -366,27 +351,6 @@ class PyroICSSoft:
             return 3
         gain = self.get("loop", "gain")
         return gain > 0.0
-    
-    def set_ncpa(self):
-        """Updates slope offsets from modal coefficients.
-        auto_offsets and user_offsets must be a 1D list or array of modal coefficients.
-        """
-        total_slope_offsets = np.zeros( (4,2) )
-        auto_offsets = self.get_aocals("ncpa", "auto_offsets")
-        user_offsets = self.get_aocals("ncpa", "user_offsets")
-        
-        total_slope_offsets += self.convert_modes_to_slopes(auto_offsets, reshape=True)     
-        total_slope_offsets += self.convert_modes_to_slopes(user_offsets, reshape=True)
-        
-        self.run("slopes", "setUserSlopeOffsets", total_slope_offsets)
-
-    def convert_modes_to_slopes(self, coeffs, reshape=True):
-        coeffs = np.array(coeffs)
-        imat = self.get("loop", "IM")
-        slope_offsets = imat @ np.array(coeffs)
-        if reshape:
-            slope_offsets = np.reshape(slope_offsets, (4,2))
-        return slope_offsets
 
 def instantiate_component(component_class, class_path, *args, **kwargs):
     spec = importlib.util.spec_from_file_location(component_class, class_path)
@@ -421,15 +385,10 @@ def reset_shms():
 
 if __name__ == "__main__":
 
-    config = _get_config()
+    config = get_ics_config()
     
     Pyro5.configure.DETAILED_TRACEBACK = config["pyro"]["detailed_traceback"]
     Pyro5.configure.COMMTIMEOUT = config["pyro"]["command_timeout"]
-
-    # Allow ND_Arrays to be serialized
-    Pyro5.configure.global_config.SERIALIZER = config["pyro"]["serializer"]
-    serpent.register_class(np.ndarray, encode_ndarray)
-    Pyro5.api.register_dict_to_class("numpy.ndarray", decode_ndarray)
     
     ics = PyroICSSoft()
     daemon = Pyro5.api.Daemon()

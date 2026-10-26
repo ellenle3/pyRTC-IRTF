@@ -3,20 +3,11 @@ import math
 import os
 import struct
 import time
+from constants import *
 from typing import List, Tuple, Optional
-
-D2PI = 2.0 * math.pi
-DPIBY2 = math.pi / 2.0
-DD2R = math.pi / 180.0
-DR2D = 180.0 / math.pi
-DAS2R = math.pi / (180.0 * 3600.0)
-DR2AS = (180.0 * 3600.0) / math.pi
-DH2R = math.pi / 12.0
-DR2H = 12.0 / math.pi
 
 ERR_NONE = 0
 ERR_FILE_READ = -1
-
 
 @dataclass
 class IrcatRecord:
@@ -28,7 +19,6 @@ class IrcatRecord:
     magD: List[str] = field(default_factory=lambda: ['-', '-', '-', '-'])
     name: str = ""
     catID: int = 0
-
 
 class NomadRecord:
     SIZE = 88  # True C struct size in bytes
@@ -258,9 +248,24 @@ def nomad_search_pos(
             )
             records.extend(box_recs)
 
+    # Add separation to records
+    for star in records:
+        star.separation = angular_distance(ra, dec, star.ra, star.dec)
+    
     # Sort results by true angular separation (closest first)
-    records.sort(key=lambda star: angular_distance(ra, dec, star.ra, star.dec))
+    #records.sort(key=lambda star: angular_distance(ra, dec, star.ra, star.dec))
+    records.sort(key=lambda star: star.separation)
 
+    # Put V < 16 stars at the top, sorted by distance, if within 20" of the guide box
+    records_bright = []
+    records_faint = []
+    for star in records:
+        if (star.magD[0] == "V" and star.mag[0] < 16 and star.separation < 20 * DR2AS):
+            records_bright.append(star)
+        else:
+            records_faint.append(star)
+    records = records_bright + records_faint
+    
     # Truncate to maximum requested records
     records = records[:maximum]
 

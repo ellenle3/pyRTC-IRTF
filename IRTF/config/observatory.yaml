@@ -1,0 +1,18 @@
+felix:
+  plate_scale: 0.16  # "/pixel
+  pos_angle: -87.7   # 2.3 - 90 degrees
+  fov: 80  # arcseconds
+  nomad_path: "/starcatalogs4/nomad/"
+  nomad_mag_limit: 20
+  nomad_max_results: 50
+
+telescope:
+  slew_speed: 1800   # fast slew pseed, "/s
+
+  # ASM guiding settings below
+  dra_max:  0.2  # max pointing adjustment before error (when guiding with ASM)
+  ddec_max: 0.2
+  tt_offload_gain: 0.1
+
+  # numpy file to transform tip-tilt to RA and Dec telescope offsets, from Zemax
+  tt_to_radec_file: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/tt_to_radec.npy"

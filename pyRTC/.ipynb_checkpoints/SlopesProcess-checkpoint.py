@@ -676,7 +676,6 @@ class SlopesProcess(pyRTCComponent):
 
         # Set and store in shared memory
         self.setSubApMasks(final_masks, offsets)
-        return
 
     def setSubApMasks(self, masks, offsets):
         self.subApMasks = masks

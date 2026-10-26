@@ -7,7 +7,7 @@ loop:
   affinity: 2
   delay: 2
   method: push-pull
-  playbackBufferFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/pb/cacofoni_pb_1000.0Hz_x5000_nmodes7_amp0.1_fmin4_df0.2.npy"
+  #playbackBufferFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/pb/cacofoni_pb_1000.0Hz_x5000_nmodes7_amp0.1_fmin4_df0.2.npy"
   #playbackBufferFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/pb/cacofoni_pb_1000.0Hz_x5000_nmodes36_amp0.01_fmin4_df0.2.npy"
   IMFile: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/imat/felix_sim_imat.npy"
   pGain: 0.
@@ -39,7 +39,6 @@ wfs:
   width: 32 #80 
   height: 32 #80 
   darkCount: 5
-  #darkFile: "/home/ellenlee/pyRTC/IRTF/calib/darkFELIX.npy"
   affinity: 0
   # gpuDevice: 0
   amplitude: 40

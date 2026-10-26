@@ -55,6 +55,7 @@ class RealTimeSubApsView(QMainWindow):
         frame = self.shm.read_noblock()
         if FLIP:
             frame = np.rot90(frame, k=1)  # Rotate 90 degrees CCW to set N up and E left
+        frame -= np.nanmin(frame)
 
         aspect = None
         ASPECTCAP = 10
@@ -97,6 +98,7 @@ class RealTimeSubApsView(QMainWindow):
         frame = self.shm.read_noblock()
         if FLIP:
             frame = np.rot90(frame, k=1)  # Rotate 90 degrees CCW to set N up and E left
+        frame -= np.nanmin(frame)
         metadata = self.metadata.read_noblock()
         new_count = metadata[0]
         new_time = metadata[1]

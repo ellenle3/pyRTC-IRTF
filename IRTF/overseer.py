@@ -3,15 +3,10 @@ import subprocess
 import time
 import threading
 import numpy as np
+import yaml
 from pyroics import get_ics_proxy
 from irtfio import *
-
-PLATE_SCALE = 0.16 # "/pixel
-POS_ANGLE = 2.3 - 90   # degrees, align image to sky coordinates
-SLEW_SPEED = 1800 # fast slew speed "/s
-TT_TO_RADEC_FILE = "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/tt_to_radec.npy"  # numpy file containing a 2D grid of tip-tilt values corresponding to RA and Dec offsets, generated from Zemax
-DRA_MAX, DDEC_MAX = 0.2, 0.2  # max pointing adjustment before error
-TT_OFFLOAD_GAIN = 0.1 # gain for offloading tip-tilt corrections
+from scripts import from get_observatory_config, felix_radec_to_xy
 
 def print_color(s: str, c: str) -> None:
     """Prints a colored string.
@@ -43,8 +38,10 @@ class Overseer():
     at its own specified frequency.
     """
     def __init__(self):
+        self.config = get_observatory_config()
+
         self.offset_last = (0, 0)
-        self.tt_to_radec = np.load(TT_TO_RADEC_FILE)
+        self.tt_to_radec = np.load( self.config["telescope"]["tt_to_radec_file"] )
         self.ns_tstart = None
 
         self.tasks = {}
@@ -102,33 +99,7 @@ class Overseer():
             else:
                 print(f"[Overseer] Warning: no task named '{name}' to deregister.")
 
-    def radec_to_xy(self, dra, ddec):
-        """Converts RA and Dec offsets to pixels using the plate scale and position
-        angle. Returns subpixel values (floats).
-        """
-        ics = get_ics_proxy()
-        
-        if not ics.is_connected("wfs"):
-            print("Felix is not running.")
-            return
-        
-        # Convert to pixel offsets
-        dx = dra / PLATE_SCALE
-        dy = ddec / PLATE_SCALE
 
-        # rotate ccw by the position angle to align with the camera coordinates
-        theta = np.radians(POS_ANGLE)
-        dx_rot = dx * np.cos(theta) - dy * np.sin(theta)
-        dy_rot = dx * np.sin(theta) + dy * np.cos(theta)
-        dx = dx_rot
-        dy = dy_rot
-
-        # subap masks are defined in terms of the final binned image
-        binning = ics.get("wfs", "binning")
-        dx /= binning
-        dy /= binning
-
-        return dx, dy
         
     # Slewing
     def open_loop_if_closed(self, slew_state):
@@ -207,7 +178,7 @@ class Overseer():
         if dra == 0 and ddec == 0:
             return
         
-        dx, dy = self.radec_to_xy(dra, ddec)
+        dx, dy = felix_radec_to_xy(dra, ddec)
         dx = round(dx)
         dy = round(dy)
         print("Moving by", dx, dy, "pixels")
@@ -232,7 +203,8 @@ class Overseer():
         if is_close_again:
             total_offset = np.sqrt( dra**2 + ddec**2 )
             # multiply by 2 in case we're going in the slow direction
-            slew_time = 2 * total_offset / SLEW_SPEED
+            slew_speed = self.config["telescope"]["slew_speed"]
+            slew_time = 2 * total_offset / slew_speed
             slew_time += 1  # add a second to be safe... offset will usually be a few arcseconds, so very fast
             time.sleep(slew_time)
 
@@ -259,8 +231,11 @@ class Overseer():
         """Offloads tilt from the ASM to the TCS if it exceeds a certain threshold.
         """
         tip, tilt = tiptilt
-        dra, ddec = -1 * TT_OFFLOAD_GAIN * self.tt_to_radec @ np.array([tip, tilt])
-        if abs(dra) > DRA_MAX or abs(ddec) > DDEC_MAX:
+        gain = self.config["telescope"]["tt_offload_gain"]
+        dra, ddec = -1 * gain * self.tt_to_radec @ np.array([tip, tilt])
+        dra_max = self.config["telescope"]["dra_max"]
+        ddec_max = self.config["telescope"]["ddec_max"]
+        if abs(dra) > dra_max or abs(ddec) > ddec_max:
             print(f"Offload amount too large! Not sending to TCS: dra={dra}, ddec={ddec}")
         ddec *= -1
         dra_send = str( round(dra, 2) )
