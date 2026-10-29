@@ -2,7 +2,7 @@ wfs:
   name: felix
   binning: 1
   downsampleFactor: 1
-  exposure: 0.2
+  exposure: 0.1
   gain: 0
   bitDepth: 16
   left: 1

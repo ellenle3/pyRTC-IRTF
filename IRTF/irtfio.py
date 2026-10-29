@@ -4,12 +4,16 @@
 import subprocess
 
 def run_t3io(command, *args):
-    result = subprocess.run(["t3io", command, *args], capture_output=True, text=True)
-    output = result.stdout.strip()
-    output = output.split(' ')
-    if output[0] != "OK":
-        raise ConnectionError(f"t3io error. Output: {output}")
-    return output
+    try:
+        result = subprocess.run(["t3io", command, *args], capture_output=True, text=True)
+        output = result.stdout.strip()
+        output = output.split(' ')
+        if output[0] != "OK":
+            raise ConnectionError(f"t3io error. Output: {output}")
+        return output
+    except FileNotFoundError:
+        print("t3io not found.")
+        return [0, 0, 0, 0, 0, 0]  # dummy output for testing
 
 def is_telescope_slewing():
     """Checks if the telescope is currently slewing by querying t3io.
@@ -35,13 +39,17 @@ def get_tcs_total_offset():
     return offset_new
 
 def get_felix_xyoffset():
-    result = subprocess.run(["/usr/local/bin/felixio", "-h", "felix", "xystage.getoffset"], capture_output=True, text=True)
-    output = result.stdout.strip()
-    output = ' '.join( output.split() )
-    output = output.split()
-    if output[0] != "OK":
-        raise ConnectionError(f"felixio error. Output: {output}")
-    
-    dra = float(output[1])   # delta east-west, in arcseconds
-    ddec = float(output[2])  # north-south
-    return dra, ddec
+    try:
+        result = subprocess.run(["/usr/local/bin/felixio", "-h", "felix", "xystage.getoffset"], capture_output=True, text=True)
+        output = result.stdout.strip()
+        output = ' '.join( output.split() )
+        output = output.split()
+        if output[0] != "OK":
+            raise ConnectionError(f"felixio error. Output: {output}")
+        
+        dra = float(output[1])   # delta east-west, in arcseconds
+        ddec = float(output[2])  # north-south
+        return dra, ddec
+    except FileNotFoundError:
+        print("felixio not found.")
+        return 0.0, 0.0  # dummy output for testing

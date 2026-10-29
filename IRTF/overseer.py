@@ -3,10 +3,13 @@ import subprocess
 import time
 import threading
 import numpy as np
+import sys
 import yaml
-from pyroics import get_ics_proxy
+import Pyro5.api
+from Pyro5.errors import CommunicationError
+from pyroics import get_ics_config, get_ics_proxy
 from irtfio import *
-from scripts import from get_observatory_config, felix_radec_to_xy
+from scripts import get_observatory_config, felix_radec_to_xy
 
 def print_color(s: str, c: str) -> None:
     """Prints a colored string.
@@ -32,6 +35,23 @@ def print_color(s: str, c: str) -> None:
     end_code = '\033[0m'
     print(f'{color_code}' + s + f'{end_code}')
 
+def get_overseer_proxy():
+    # Each thread will need its own proxy for the ICS.
+    config = get_observatory_config()
+    uri_path = config["overseer"]["uri_path"]
+
+    with open(uri_path) as f:
+        uri = f.read().strip()
+    try:
+        proxy = Pyro5.api.Proxy(uri)
+        # Test the connection
+        proxy._pyroBind()
+    except CommunicationError:
+        raise ConnectionError(f"Could not connect to Overseer at {uri}. Is the Overseer running?")
+    
+    return proxy
+
+@Pyro5.api.expose
 class Overseer():
     """Monitors components to make sure that they are in a safe and functional
     state. Runs registered checks continuously in a background thread, each
@@ -41,7 +61,7 @@ class Overseer():
         self.config = get_observatory_config()
 
         self.offset_last = (0, 0)
-        self.tt_to_radec = np.load( self.config["telescope"]["tt_to_radec_file"] )
+        self.tt_to_radec = np.load( self.config["overseer"]["tt_to_radec_file"] )
         self.ns_tstart = None
 
         self.tasks = {}
@@ -98,9 +118,7 @@ class Overseer():
                 print(f"Deregistered check: '{name}'.")
             else:
                 print(f"[Overseer] Warning: no task named '{name}' to deregister.")
-
-
-        
+            
     # Slewing
     def open_loop_if_closed(self, slew_state):
         """Opens the loop if it is currently closed. Returns True if the loop was
@@ -257,42 +275,73 @@ class Overseer():
         # run estimate SNR but make sure to average over a few frames
         pass
 
-    def offload_tilt_to_tcs(self):
-        """Offloads tilt from the ASM to the TCS if it exceeds a certain threshold.
+    def enable_guidebox_offset_check(self):
+        """Enables the guidebox offset check. This should be called when the TO hits "go".
         """
-        tilt = self.get_asm_tilt()
-        
+        overseer.set_last_offset_to_current()
+        self.reset_nonsidereal()
+        self.register_check(
+            name="guidebox_offset",
+            check_func=get_tcs_total_offset,
+            callback_func=self.update_guidebox,
+            frequency=10
+        )
+
+    def disable_guidebox_offset_check(self):
+        """Disables the guidebox offset check. This should be called when the TO hits "stop".
+        """
+        self.deregister_check("guidebox_offset")
+        self.reset_guidebox()
+
+class DummyOverseer(Overseer):
+    """A dummy overseer that does not actually perform any checks. Useful for testing
+    or running the GUI without a real overseer.
+    """
+    def __init__(self):
+        super().__init__()
+
+    def enable_guidebox_offset_check(self):
+        print("Endabled guidebox check.")
+
+    def disable_guidebox_offset_check(self):
+        print("Disabled guidebox check.")
 
 if __name__=='__main__':
-    overseer = Overseer()
-    overseer.set_last_offset_to_current()  # initialize the last offset to the current TCS offset at startup
 
-    # Activate the guidebox updating check only when the TO hits "go"
-    # otherwise leave disabled. reset NS rate when disabled (but leave guidebox as is).
-
-    # Update the guidebox (subap masks) based on TCS offsets
-    overseer.register_check(
-        name="guidebox_offset",
-        check_func=get_tcs_total_offset,
-        callback_func=overseer.update_guidebox,
-        frequency=10
-    )
-
-    # # Open the loop if slewing, and the loop is closed
-    # overseer.register_check(
-    #     name="open_if_slew",
-    #     check_func=is_telescope_slewing,
-    #     callback_func=overseer.open_loop_if_closed,
-    #     frequency=10
-    # )
+    try:
+        config = get_observatory_config()
+        overseer = Overseer()
+        overseer.set_last_offset_to_current()
     
-    # DO NOT HAVE AS USER OFFSETS SINCE IT WILL MESS UP TCS POINTING!
-    # Offloads tilt from the ASM to the TCS
-    # overseer.register_check(
-    #     name="tilt_monitor",
-    #     check_func=overseer.get_asm_tilt,
-    #     callback_func=overseer.offload_asm_tilt_to_tcs,
-    #     frequency=0.2
-    # )
+        # Open the loop if slewing, and the loop is closed
+        overseer.register_check(
+            name="open_if_slew",
+            check_func=is_telescope_slewing,
+            callback_func=overseer.open_loop_if_closed,
+            frequency=10
+        )
+        
+        # Offloads tilt from the ASM to the TCS
+        overseer.register_check(
+            name="tilt_monitor",
+            check_func=overseer.get_asm_tilt,
+            callback_func=overseer.offload_asm_tilt_to_tcs,
+            frequency=0.2
+        )
+        
+    except FileNotFoundError:
+        print("t3io not found. Making dummy overseer.")
+        overseer = DummyOverseer()
 
-    overseer._thread.join()  # keep main thread alive
+    daemon = Pyro5.api.Daemon()
+    uri = daemon.register(overseer, objectId="overseer")
+    with open(config["overseer"]["uri_path"], "w") as f:
+        f.write(str(uri))
+    print(f"Overseer is running. URI:", uri)
+    
+    # Block the main thread to listen for requests
+    try:
+        daemon.requestLoop()
+    except KeyboardInterrupt:
+        print("Shutting down...")
+        overseer.stop()

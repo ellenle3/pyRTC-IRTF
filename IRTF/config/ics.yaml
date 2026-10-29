@@ -1,28 +1,7 @@
-# paths:
-#   pyrtc_class: "/Users/ellenlee/Documents/pyRTC-IRTF/pyRTC/"  # pyRTC classes for hardware launcher
-#   hardware_launchers: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/config/irtf_ic.json"
-#   hardware_config: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/config/hardware/"
-
-# ports:
-#   wfs: 10489
-#   wfc: 10490
-#   slopes: 10491
-#   loop: 10492
-#   tel: 10493
-
-# ao:
-#   num_modes: 7  # Zernike modes - 7 = tip/tilt through coma
-
-# pyro:
-#   ics_uri_path: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/config/pyrtc_uri.txt"
-#   detailed_traceback: true
-#   command_timeout: 15
-#   serializer: "serpent"
-
 paths:
-  pyrtc_class: "/home/felix/src/pyrtc/pyRTC-IRTF/pyRTC/"  # pyRTC classes for hardware launcher
-  hardware_launchers: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/config/irtf_ic.json"
-  hardware_config: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/config/hardware/"
+  pyrtc_class: "/Users/ellenlee/Documents/pyRTC-IRTF/pyRTC/"  # pyRTC classes for hardware launcher
+  hardware_launchers: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/config/irtf_ic.json"
+  hardware_config: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/config/hardware/"
 
 ports:
   wfs: 10489
@@ -35,6 +14,26 @@ ao:
   num_modes: 7  # Zernike modes - 7 = tip/tilt through coma
 
 pyro:
-  ics_uri_path: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/config/pyrtc_uri.txt"
+  ics_uri_path: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/config/pyrtc_uri.txt"
   detailed_traceback: true
   command_timeout: 15
+
+# paths:
+#   pyrtc_class: "/home/felix/src/pyrtc/pyRTC-IRTF/pyRTC/"  # pyRTC classes for hardware launcher
+#   hardware_launchers: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/config/irtf_ic.json"
+#   hardware_config: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/config/hardware/"
+
+# ports:
+#   wfs: 10489
+#   wfc: 10490
+#   slopes: 10491
+#   loop: 10492
+#   tel: 10493
+
+# ao:
+#   num_modes: 7  # Zernike modes - 7 = tip/tilt through coma
+
+# pyro:
+#   ics_uri_path: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/config/pyrtc_uri.txt"
+#   detailed_traceback: true
+#   command_timeout: 15

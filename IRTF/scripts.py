@@ -6,7 +6,8 @@ from nomad import nomad_search_pos
 from constants import *
 
 def get_observatory_config():
-    config_path = "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/config/observatory.yaml"
+    #config_path = "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/config/observatory.yaml"
+    config_path = "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/config/observatory.yaml"
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     return config
@@ -66,13 +67,14 @@ def felix_xy_to_radec(dx, dy):
     
     return dra, ddec
 
-def focus_lookup(dra, ddec, f0):
-    """Returns a pre-calibrated focus value.
+def focus_lookup(dra, ddec):
+    """Returns a pre-calibrated focus value. (Differece from the on-axis
+    focus value.)
     """
     A = 3.351e-5
     dra0 = 180
     ddec0 = 50
-    focus = f0 + A * ( (dra - dra0)**2 + (ddec - ddec0)**2 )
+    focus = A * ( (dra - dra0)**2 + (ddec - ddec0)**2 )
     return focus
 
 def get_felix_guidebox_offset():
@@ -93,11 +95,24 @@ def get_felix_guidebox_offset():
     return dra, ddec
 
 def set_focus_reference():
+    ics = get_ics_proxy()
+    num_modes = ics.get_config("ao", "num_modes")
+    dra, ddec = get_felix_guidebox_offset()
+    coeffs = np.zeros(num_modes)
+    dfocus = focus_lookup(dra, ddec)
+    coeffs[2] = dfocus
+    slopes = modes_to_slopes(coeffs, reshape=True)
+    ics.run("slopes", "setUserSlopeOffsets", slopes)
+
+def run_focus_calibration():
     # Run this on startup
     ics = get_ics_proxy()
 
+    # Measure current focus value
+
     # Star position
     dra, ddec = get_felix_guidebox_offset()
+    dfocus = focus_lookup(dra, ddec)
 
     # Update the on-axis focus zero point
     slopes = ics.run("slopes", "read", False)
@@ -108,21 +123,6 @@ def set_focus_reference():
     # ...decide whether to save this focus to a file
     # or if it's sufficient to just reboot andor wfs when stopping
     # probably save to a file for ease of use
-
-def set_ncpa():
-    """Updates slope offsets from modal coefficients.
-    auto_offsets and user_offsets must be a 1D list or array of modal coefficients.
-    """
-    ics = get_ics_proxy()
-    
-    total_slope_offsets = np.zeros( (4,2) )
-    auto_offsets = ics.get_aocals("ncpa", "auto_offsets")
-    user_offsets = ics.get_aocals("ncpa", "user_offsets")
-    
-    total_slope_offsets += modes_to_slopes(auto_offsets, reshape=True)     
-    total_slope_offsets += modes_to_slopes(user_offsets, reshape=True)
-    
-    self.run("slopes", "setUserSlopeOffsets", total_slope_offsets)
 
 def modes_to_slopes(coeffs, reshape=True):
     ics = get_ics_proxy()
@@ -169,14 +169,41 @@ def find_stars_near_felix():
     )
     return results, err_code
 
-def texpos_test_image(V):
+def texpos_active_optics():
     results, err_code = find_stars_near_felix()
     if err_code != 0:
         raise RuntimeError("NOMAD query failed. Error code:", err_code)
     elif len(results) == 0:
         print("No guide stars found.")
-        return 1
-    
-def texpos_active_optics(V):
-    pass
-    
+        return 0.1, 1
+
+    for record in results:
+        mag = 999
+        for i in range(4):
+            mag_filter = record.magD[i]
+            if mag_filter != '-':
+                mag = float(mag_filter)
+                break
+        if mag != 999:
+            break
+    if mag == 999:
+        print("No valid magnitudes found for any of the stars.")
+        return 0.1, 1
+
+    # flux limited...
+    if mag < 8:
+        return 0.05, 50  # extremely bright - just avoid saturating
+
+    mag0 = 12
+    t0 = 1
+    fscale = 10**(-0.4 * (mag - mag0))
+    t = t0 * fscale
+
+    coadds = 1
+    if t <= 2:
+        coadds = round(5/t)   # integrate for 5 sec minimum
+    elif t > 20:
+        coadds = round(t/20) # if itime > 20 sec, split across coadds
+        t = 20
+
+    return t, coadds

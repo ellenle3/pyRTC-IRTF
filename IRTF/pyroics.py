@@ -31,8 +31,8 @@ serpent.register_class(np.ndarray, _encode_ndarray)
 Pyro5.api.register_dict_to_class("numpy.ndarray", _decode_ndarray)
 
 def get_ics_config():
-    config_path = "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/config/ics.yaml"
-    #config_path = "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/config/ics.yaml"
+    #config_path = "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/config/ics.yaml"
+    config_path = "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/config/ics.yaml"
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     return config
@@ -107,36 +107,12 @@ class PyroICSSoft:
         # prevent multiple clients from trying to access the same component
         self._locks = {ctype: threading.RLock() for ctype in self.components}
 
-        self.ao_cals = {
-            "imat" : {
-                "theor_file": None,
-                "synth_file": None,
-                "method": None
-            },
-            "ncpa": {
-                "ra_target": "00:00:00.00",
-                "dec_target": "+00:00:00.0",
-                "ra_guide": "00:00:00.00",
-                "dec_guide": "+00:00:00.0",
-                "dra": 0.0,
-                "ddec": 0.0,
-                "auto_offsets": np.zeros( self.config["ao"]["num_modes"] ),
-                "user_offsets": np.zeros( self.config["ao"]["num_modes"] )
-            }
-        }
+    def get_config(self, *args):
+        result = self.config
+        for key in args:
+            result = result[key]
+        return result
 
-    def get_aocals(self, key, subkey):
-        return self.ao_cals[key][subkey]
-    
-    def set_aocals(self, key, subkey, value):
-        if key in self.ao_cals and subkey in self.ao_cals[key]:
-            self.ao_cals[key][subkey] = value
-            if subkey in ["auto_offsets", "user_offsets"]:
-                self.set_ncpa()  # automatically update slope offsets if modal coefficients change
-            return ICSErrorCodes.get_code("Success")
-        else:
-            return -1
-    
     def get_available_launchers(self):
         return list(self.launchers.keys())
     
@@ -324,6 +300,18 @@ class PyroICSSoft:
         self.reset_shms(["wfs", "wfsRaw", "subApMasks"])
 
     # Common loop-related functionality
+    def start_all(self):
+        self.run("wfc", "start")
+        self.run("wfs", "start")
+        self.run("slopes", "start")
+        self.run("loop", "start")
+
+    def stop_all(self):
+        self.run("loop", "stop")
+        self.run("slopes", "stop")
+        self.run("wfs", "stop")
+        self.run("wfc", "stop")
+
     def open_loop(self, flatten=False):
         """Opens the loop. If flatten=True, also flattens the ASM upon opening
         the loop so we don't have to wait for voltages to leak off.

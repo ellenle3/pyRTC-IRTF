@@ -9,10 +9,13 @@ felix:
 telescope:
   slew_speed: 1800   # fast slew pseed, "/s
 
+overseer:
+  uri_path: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/config/overseer_uri.txt"
+
   # ASM guiding settings below
   dra_max:  0.2  # max pointing adjustment before error (when guiding with ASM)
   ddec_max: 0.2
   tt_offload_gain: 0.1
 
   # numpy file to transform tip-tilt to RA and Dec telescope offsets, from Zemax
-  tt_to_radec_file: "/home/felix/src/pyrtc/pyRTC-IRTF/IRTF/calib/tt_to_radec.npy"
+  tt_to_radec_file: "/Users/ellenlee/Documents/pyRTC-IRTF/IRTF/calib/tt_to_radec.npy"
